@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AuspexAI — The volunteer compute network for AI safety research</title>
+  <meta name="description" content="A volunteer-driven, open-source distributed compute network purpose-built for AI safety research. Sentinel runs as the first tenant. Bring your own experiment.">
+  <meta property="og:title" content="AuspexAI — The volunteer compute network for AI safety research">
+  <meta property="og:description" content="Volunteer-driven, AGPL-3.0, no tokens. Sentinel runs as the first tenant. Researchers propose experiments; volunteers donate compute.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://auspexai.network/">
+  <meta name="twitter:card" content="summary">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a href="#main-content" class="skip-link">Skip to content</a>
+
+<nav>
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">auspex<span>[ai]</span></a>
+    <button class="nav-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')" aria-label="Menu">&#9776;</button>
+    <ul class="nav-links">
+      <li><a href="#what">What this is</a></li>
+      <li><a href="#volunteers">Volunteers</a></li>
+      <li><a href="#researchers">Researchers</a></li>
+      <li><a href="#governance">Governance</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero" id="main-content">
+  <div class="container">
+    <h1>The volunteer compute network for AI safety research.</h1>
+    <p class="subtitle">Sentinel runs as the first tenant. The SDK is open; bring your own experiment. AuspexAI is part of the <a href="https://preneurial.works">preneurial[works]</a> family &mdash; the operational layer where the methodology meets shipped infrastructure.</p>
+    <p class="subtitle" style="margin-top: 1.5rem; font-size: 1rem; color: var(--text-tertiary);">We are at Phase 0. The worker, SDK, and coordinator do not yet ship. This page exists so you can find us, follow along, and understand what we are building.</p>
+  </div>
+</section>
+
+<!-- What this is -->
+<section id="what">
+  <div class="container">
+    <div class="section-header">
+      <div class="overline-hero">What this is</div>
+      <h2>Distributed compute purpose-built for the workload BOINC was not built for.</h2>
+    </div>
+    <p style="max-width: 720px; margin-bottom: 1.5rem;">Long-running multi-agent simulations, drift studies, adversarial-robustness tests &mdash; stateful, multi-step LLM and agent research that runs at scales no individual lab budget reaches.</p>
+    <p style="max-width: 720px;">The platform is open infrastructure. <a href="https://github.com/jasongagne-git/sentinel" target="_blank" rel="noopener">Sentinel</a> &mdash; the multi-agent LLM behavioral drift research program &mdash; runs as the first tenant. Its tenant package <a href="https://github.com/auspexai/sentinel-tenant" target="_blank" rel="noopener"><code>auspexai/sentinel-tenant</code></a> doubles as the reference example for researchers building their own tenants. AuspexAI's value scales with <em>distinct</em> research projects, not more copies of Sentinel. If you have an experiment that fits, we want yours.</p>
+  </div>
+</section>
+
+<!-- What this is not -->
+<section id="not">
+  <div class="container">
+    <div class="section-header">
+      <div class="overline-hero">What this is not</div>
+      <h2>Three things to clear up before anything else.</h2>
+    </div>
+
+    <div class="callout callout-purple">
+      <strong>No tokens. No blockchain. No on-chain payment. No plans to add any.</strong> Volunteers donate; researchers run experiments. That is the whole transaction.
+    </div>
+
+    <div class="callout callout-accent">
+      <strong>Not a BOINC replacement.</strong> BOINC is a 20-year institution running millions of devices for projects we admire. We are complementary &mdash; different workload, different engineering era. We learn from their longevity.
+    </div>
+
+    <div class="callout callout-accent">
+      <strong>Not source-available.</strong> AuspexAI is open source under <strong>AGPL-3.0</strong> &mdash; OSI-approved, network-copyleft. You can fork it, run it, and modify it. Modifications, including those served over a network, must be released to their users under AGPL.
+    </div>
+  </div>
+</section>
+
+<!-- For volunteers -->
+<section id="volunteers">
+  <div class="container">
+    <div class="section-header">
+      <div class="overline-hero">For volunteers</div>
+      <h2>Two participation paths, both first-class.</h2>
+      <p class="subtitle">Pick whichever fits how you want to contribute. Run experiments yourself, or donate compute to others&rsquo; research &mdash; both stay supported.</p>
+    </div>
+
+    <div class="two-col">
+      <div class="card card-accent-left card-accent-green">
+        <span class="tag tag-green">Local</span> <span class="tag tag-green">Available now</span>
+        <h3 class="mt-1">Run Sentinel standalone</h3>
+        <p>Download Sentinel, run it on your own hardware, keep your data local. No network, no signup, no telemetry. Full local control.</p>
+        <div class="btn-group" style="margin-top: 1.25rem;">
+          <a href="https://github.com/jasongagne-git/sentinel" class="btn btn-outline" target="_blank" rel="noopener" style="font-size: 0.8rem; padding: 0.5rem 1rem;">Sentinel on GitHub</a>
+          <a href="https://theallsourceforge.com/research/sentinel.html" class="btn btn-outline" target="_blank" rel="noopener" style="font-size: 0.8rem; padding: 0.5rem 1rem;">Sentinel research &rarr;</a>
+        </div>
+      </div>
+
+      <div class="card card-accent-left card-accent-purple">
+        <span class="tag tag-purple">Networked</span> <span class="tag tag-purple">Phase 1</span>
+        <h3 class="mt-1">Join the AuspexAI network</h3>
+        <p>Donate compute to a shared pool. Run a sandboxed worker that contributes to whatever experiments are active &mdash; Sentinel today, more tenants over time. Designed for:</p>
+        <ul class="pillar-list" style="margin-top: 0.75rem;">
+          <li><strong>Sandboxed by default.</strong> Resource caps, idle-only mode, no host filesystem access.</li>
+          <li><strong>Anonymous T0 is fully featured.</strong> No signup, no email, no PII collected.</li>
+          <li><strong>Signed contribution receipts.</strong> Optional public listing on per-tenant contributors page. Tenants commit to acknowledging volunteer compute in resulting papers and preprints. No leaderboards, no scores, no badges.</li>
+          <li><strong>No tokens, no compensation.</strong> Donate-only. Recognition welcomed; payment out of scope.</li>
+        </ul>
+        <p style="margin-top: 1rem; color: var(--text-tertiary); font-size: 0.85rem;">When the worker ships, this page will link to the installer.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- For researchers -->
+<section id="researchers">
+  <div class="container">
+    <div class="section-header">
+      <div class="overline-hero">For researchers</div>
+      <h2>Bring your own experiment.</h2>
+      <p class="subtitle">AuspexAI is research infrastructure for the field, not a single-purpose Sentinel host. The platform handles distribution, trust, replication, signing, and analysis. You handle experiment design.</p>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <ul class="pillar-list" style="font-size: 0.95rem;">
+          <li><strong>Volunteer compute is free.</strong> Run experiments at scales your budget cannot reach.</li>
+          <li><strong>Trust, replication, and signed audit log are built-in.</strong> Your results are defensible.</li>
+          <li><strong>Tenant SDK with active maintenance.</strong> Not a coordinator you have to keep alive yourself.</li>
+          <li><strong>Reproducible signed releases.</strong> Methods sections write themselves.</li>
+          <li><strong>Sentinel-tenant is the worked reference example.</strong> Read its source to see what a tenant looks like.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="callout callout-purple">
+          <strong>Phase 0 status.</strong> The SDK is not yet shipped. When it is, this page will link to it. If your work would benefit from the platform sooner, <a href="mailto:research@auspexai.network">reach out</a> &mdash; we'd rather hear from you early than late.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Where we are -->
+<section id="where">
+  <div class="container">
+    <div class="section-header">
+      <div class="overline-hero">Where we are</div>
+      <h2>Phase 0 &mdash; Foundation.</h2>
+      <p class="subtitle">Domain, GitHub org, governance, license, code of conduct, research ethics policy, threat model, and positioning are landing now. Code begins in Phase 1.</p>
+    </div>
+    <div class="btn-group">
+      <a href="https://github.com/auspexai" class="btn btn-primary" target="_blank" rel="noopener">Follow on GitHub &rarr;</a>
+    </div>
+  </div>
+</section>
+
+<!-- Governance & policies -->
+<section id="governance">
+  <div class="container">
+    <div class="section-header">
+      <div class="overline-hero">Governance &amp; policies</div>
+      <h2>The commitments that come before the code.</h2>
+    </div>
+    <div class="card-grid">
+      <a href="https://github.com/auspexai/.github/blob/main/GOVERNANCE.md" class="research-card" target="_blank" rel="noopener" style="border-top: 3px solid var(--purple);">
+        <div class="eyebrow" style="color: var(--purple);">Governance</div>
+        <h3 class="mt-half">Roles, decisions, conflicts of interest</h3>
+        <p>Volunteer / Platform Contributor / Researcher / Approver / Maintainer. Lazy consensus, public RFCs, documented conflict-of-interest expectations.</p>
+      </a>
+      <a href="https://github.com/auspexai/.github/blob/main/CODE_OF_CONDUCT.md" class="research-card" target="_blank" rel="noopener" style="border-top: 3px solid var(--purple);">
+        <div class="eyebrow" style="color: var(--purple);">Code of Conduct</div>
+        <h3 class="mt-half">Community standards and escalation</h3>
+        <p>Contributor Covenant 2.1 with an AuspexAI-specific Enforcement section, including the escalation pathway for complaints involving the Maintainer.</p>
+      </a>
+      <a href="https://github.com/auspexai/.github/blob/main/CONTRIBUTING.md" class="research-card" target="_blank" rel="noopener" style="border-top: 3px solid var(--purple);">
+        <div class="eyebrow" style="color: var(--purple);">Contributing</div>
+        <h3 class="mt-half">DCO sign-off, how to participate</h3>
+        <p>Developer Certificate of Origin (DCO), no CLA. The barrier to a first PR is one <code>git commit -s</code>.</p>
+      </a>
+      <a href="https://github.com/auspexai/.github/blob/main/RESEARCH_ETHICS_POLICY.md" class="research-card" target="_blank" rel="noopener" style="border-top: 3px solid var(--purple);">
+        <div class="eyebrow" style="color: var(--purple);">Research Ethics</div>
+        <h3 class="mt-half">What experiments are accepted</h3>
+        <p>Dual-use distinction: studying harmful agent behavior to detect and prevent it is permitted with documented containment; producing harmful artifacts for non-research purposes is not.</p>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Contact -->
+<section id="contact" class="section-cta">
+  <div class="container">
+    <div class="section-header">
+      <div class="overline-hero">Contact</div>
+      <h2>Reach out.</h2>
+    </div>
+    <div class="btn-group">
+      <a href="mailto:contact@auspexai.network" class="btn btn-outline">contact@auspexai.network</a>
+    </div>
+    <p style="margin-top: 1.25rem; font-size: 0.85rem; color: var(--text-tertiary);">Security disclosures: <a href="mailto:security@auspexai.network">security@auspexai.network</a> &mdash; please disclose responsibly.</p>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="container">
+    <div class="footer-about">
+      <div class="footer-logo"><span class="nav-logo">auspex<span>[ai]</span></span></div>
+      <p class="footer-bio">Part of the <a href="https://preneurial.works"><strong>preneurial[works]</strong></a> family. Sibling property: <a href="https://theallsourceforge.com">The All Source Forge</a> (defense AI signal intelligence). AuspexAI is volunteer-driven and AGPL-3.0 licensed; the &ldquo;AuspexAI&rdquo; name and brand are protected separately under trademark.</p>
+      <div class="footer-social">
+        <a href="https://github.com/auspexai" target="_blank" rel="noopener">GitHub</a>
+        <a href="mailto:contact@auspexai.network">contact@auspexai.network</a>
+      </div>
+    </div>
+    <ul class="footer-links">
+      <li><a href="#what">What this is</a></li>
+      <li><a href="#volunteers">Volunteers</a></li>
+      <li><a href="#researchers">Researchers</a></li>
+      <li><a href="#governance">Governance</a></li>
+    </ul>
+    <p>&copy; 2026 AuspexAI. AGPL-3.0.</p>
+  </div>
+</footer>
+
+</body>
+</html>

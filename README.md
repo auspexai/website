@@ -2,7 +2,7 @@
 
 Source for the public landing page at [auspexai.network](https://auspexai.network).
 
-Currently empty. Content will be authored as part of Phase 0 deliverable P0.4 (landing page).
+Single static page (`index.html` + `style.css`); served by GitHub Pages at the custom domain in `CNAME`. Part of the [preneurial[works]](https://preneurial.works) family.
 
 ## Governance & policies
 
