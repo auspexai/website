@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#ffffff"/>
+  <rect y="620" width="1200" height="10" fill="#2563EB"/>
+
+  <!-- Logo -->
+  <text x="100" y="260" font-family="Inter, -apple-system, sans-serif" font-size="52" font-weight="700" fill="#1e293b">preneurial<tspan fill="#2563EB">[works]</tspan></text>
+
+  <!-- Tagline -->
+  <text x="100" y="320" font-family="Inter, -apple-system, sans-serif" font-size="28" font-weight="400" fill="#475569">Institutional Transformation, Empirically Tested</text>
+
+  <!-- Subtitle -->
+  <text x="100" y="380" font-family="Inter, -apple-system, sans-serif" font-size="20" font-weight="400" fill="#94a3b8">Four questions institutions fail to ask in sequence.</text>
+  <text x="100" y="410" font-family="Inter, -apple-system, sans-serif" font-size="20" font-weight="400" fill="#94a3b8">Validated empirically in defense AI.</text>
+
+  <!-- Pillar color bar -->
+  <rect x="100" y="460" width="80" height="4" rx="2" fill="#D97706"/>
+  <rect x="200" y="460" width="80" height="4" rx="2" fill="#2563EB"/>
+  <rect x="300" y="460" width="80" height="4" rx="2" fill="#059669"/>
+  <rect x="400" y="460" width="80" height="4" rx="2" fill="#7C3AED"/>
+
+  <!-- URL -->
+  <text x="100" y="540" font-family="'Courier New', monospace" font-size="18" font-weight="600" fill="#94a3b8" letter-spacing="0.05em">preneurial.works</text>
+</svg>
