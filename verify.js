@@ -19,7 +19,7 @@
   var errorList = document.getElementById('error-list');
 
   btn.addEventListener('click', function () {
-    var raw = textarea.value.trim();
+    var raw = textarea.value.replace(/\s+/g, '');
     if (!raw) {
       textarea.focus();
       return;
