@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verify a Receipt · auspex[ai]</title>
+<meta name="description" content="Verify an AuspexAI contribution receipt's cryptographic signature and inspect its contents.">
+
+<meta property="og:title" content="Verify a Receipt · auspex[ai]">
+<meta property="og:description" content="Paste a base64-encoded COSE receipt to verify its signature and inspect its contents.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://auspexai.network/verify.html">
+<meta property="og:image" content="https://auspexai.network/images/og-card.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Verify a Receipt · auspex[ai]">
+<meta name="twitter:description" content="Paste a base64-encoded COSE receipt to verify its signature and inspect its contents.">
+<meta name="twitter:image" content="https://auspexai.network/images/og-card.png">
+
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="images/favicon-192.png">
+<link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@400;500&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="style.css">
+<style>
+  /* Verify page — scoped styles */
+  .verify-hero {
+    padding: 7rem 2rem 3rem;
+    text-align: center;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  .verify-hero h1 {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-weight: 500;
+    font-size: clamp(32px, 5vw, 48px);
+    line-height: 1.15;
+    color: var(--text);
+    margin-bottom: 1rem;
+  }
+  .verify-hero .explainer {
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    color: var(--text-dim);
+    line-height: 1.7;
+    max-width: 560px;
+    margin: 0 auto;
+  }
+
+  .verify-form {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 2rem 2rem;
+  }
+  .verify-form textarea {
+    width: 100%;
+    min-height: 180px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    padding: 1.1rem 1.25rem;
+    resize: vertical;
+    transition: border-color 0.25s;
+  }
+  .verify-form textarea::placeholder {
+    color: var(--text-mute);
+  }
+  .verify-form textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.15);
+  }
+  .verify-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding: 0.75rem 2rem;
+    background: var(--accent-deep);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.15s;
+  }
+  .verify-btn:hover {
+    background: var(--accent);
+    color: var(--bg);
+    transform: translateY(-1px);
+  }
+  .verify-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+  }
+  .verify-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .verify-btn .spinner {
+    display: none;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: var(--text);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  .verify-btn.loading .spinner {
+    display: inline-block;
+  }
+  .verify-btn.loading .btn-label {
+    display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Results */
+  .verify-results {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 2rem 4rem;
+    display: none;
+  }
+  .verify-results.visible {
+    display: block;
+  }
+
+  .verify-steps {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    padding: 1.4rem 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .verify-steps .step-heading {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-mute);
+    margin-bottom: 1rem;
+  }
+  .step-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+  }
+  .step-row:last-child { border-bottom: none; }
+  .step-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+    font-weight: 600;
+  }
+  .step-icon.pass {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--done);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+  }
+  .step-icon.fail {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+  }
+  .step-icon.pending {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--progress);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+  }
+  .step-label { flex: 1; }
+  .step-detail {
+    color: var(--text-mute);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+  }
+
+  /* Decoded receipt */
+  .decoded-receipt {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .decoded-receipt .decoded-heading {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--text-mute);
+  }
+  .decoded-receipt pre {
+    padding: 1.1rem 1.25rem;
+    margin: 0;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* Error display */
+  .verify-errors {
+    background: rgba(239, 68, 68, 0.06);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 10px;
+    padding: 1.1rem 1.25rem;
+    display: none;
+  }
+  .verify-errors.visible {
+    display: block;
+  }
+  .verify-errors .error-heading {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: #ef4444;
+    margin-bottom: 0.75rem;
+  }
+  .verify-errors ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .verify-errors li {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: rgba(239, 68, 68, 0.85);
+    padding: 4px 0;
+    line-height: 1.5;
+  }
+  .verify-errors li::before {
+    content: "\2715\00a0\00a0";
+  }
+
+  @media (max-width: 980px) {
+    .verify-hero { padding: 6rem 1.5rem 2rem; }
+    .verify-form { padding: 0 1.5rem 2rem; }
+    .verify-results { padding: 0 1.5rem 4rem; }
+  }
+</style>
+</head>
+<body>
+
+<a href="#main-content" class="skip-link">Skip to content</a>
+
+<nav aria-label="Primary">
+  <a href="/" class="nav-logo" aria-label="auspex[ai] home">auspex<span class="b">[ai]</span></a>
+  <button class="nav-toggle" type="button" aria-label="Toggle menu" aria-expanded="false" aria-controls="nav-links" onclick="(function(b){var l=document.getElementById('nav-links');var open=l.classList.toggle('open');b.setAttribute('aria-expanded',open?'true':'false');})(this)">&#9776;</button>
+  <ul class="nav-links" id="nav-links">
+    <li><a href="/#roadmap">Roadmap</a></li>
+    <li><a href="/#engage">Engage</a></li>
+    <li><a href="verify.html">Verify</a></li>
+    <li><a href="https://github.com/auspexai">GitHub</a></li>
+  </ul>
+</nav>
+
+<main id="main-content">
+
+  <section class="verify-hero">
+    <h1>Verify a Receipt</h1>
+    <p class="explainer">Paste a base64-encoded COSE receipt to verify its signature and inspect its contents.</p>
+  </section>
+
+  <section class="verify-form">
+    <label for="receipt-input" class="sr-only" style="position:absolute;left:-9999px;">Receipt data</label>
+    <textarea id="receipt-input" placeholder="Paste base64-encoded COSE receipt here..." spellcheck="false" autocomplete="off"></textarea>
+    <button type="button" class="verify-btn" id="verify-btn">
+      <span class="btn-label">Verify</span>
+      <span class="spinner" aria-hidden="true"></span>
+    </button>
+  </section>
+
+  <section class="verify-results" id="verify-results" aria-live="polite">
+    <div class="verify-steps" id="verify-steps">
+      <div class="step-heading">Verification steps</div>
+      <!-- steps rendered by verify.js -->
+    </div>
+
+    <div class="decoded-receipt" id="decoded-receipt">
+      <div class="decoded-heading">Decoded receipt body</div>
+      <pre id="decoded-json"></pre>
+    </div>
+
+    <div class="verify-errors" id="verify-errors">
+      <div class="error-heading">Errors</div>
+      <ul id="error-list"></ul>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>Part of the <a href="https://preneurial.works">preneurial[works]</a> family. Sibling: <a href="https://theallsourceforge.com">The All Source Forge</a>. Security: <a href="mailto:security@auspexai.network">security@auspexai.network</a></p>
+</footer>
+
+<!-- CORS note: The coordinator endpoint at coord.auspexai.network has CORS
+     enabled for auspexai.network origins. This page will NOT work when opened
+     via file:// — serve it through a local HTTP server or deploy to GitHub
+     Pages to test the verification fetch. -->
+<script src="verify.js"></script>
+</body>
+</html>
