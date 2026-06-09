@@ -179,11 +179,22 @@
       authStatus = 'fail';
       authDetail = 'signer not authorized';
     } else {
-      // null / undefined — coordinator returns null for this currently
+      // null / undefined — the coordinator does not yet perform the roster
+      // (AUTHORIZED_SIGNERS.md) check at this endpoint; surface its candid note.
       authStatus = 'pending';
-      authDetail = 'verification pending';
+      authDetail = data.authorized_signer_note
+        || 'roster check not yet performed by this endpoint';
     }
     renderStep('Authorized Signer', authStatus, authDetail);
+
+    // Coordinator mode (dev vs operational) — so a verifier knows the posture.
+    if (data.coordinator_mode) {
+      renderStep(
+        'Coordinator mode',
+        data.coordinator_mode === 'operational' ? 'pass' : 'pending',
+        data.coordinator_mode
+      );
+    }
 
     // Decoded receipt body
     if (data.receipt && Object.keys(data.receipt).length > 0) {
