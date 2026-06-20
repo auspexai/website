@@ -8,6 +8,7 @@
   'use strict';
 
   var VERIFY_URL = 'https://coord.auspexai.network/api/v0/receipts/verify';
+  var RECEIPT_URL = 'https://coord.auspexai.network/api/v0/receipts/';
 
   var textarea = document.getElementById('receipt-input');
   var btn = document.getElementById('verify-btn');
@@ -19,12 +20,19 @@
   var errorList = document.getElementById('error-list');
 
   btn.addEventListener('click', function () {
-    var raw = textarea.value.replace(/\s+/g, '');
+    var raw = textarea.value.trim();
     if (!raw) {
       textarea.focus();
       return;
     }
-    runVerification(raw);
+    // Primary path: a receipt id (rcpt-…). The page fetches the signed blob by id
+    // and verifies it — no one should have to hold a raw COSE. A pasted blob still
+    // works as a fallback (anything that isn't a receipt id is treated as one).
+    if (/^rcpt-/i.test(raw)) {
+      fetchThenVerify(raw);
+    } else {
+      runVerification(raw.replace(/\s+/g, ''));
+    }
   });
 
   function setLoading(on) {
@@ -100,6 +108,34 @@
     len = len || 16;
     if (hex.length <= len) return hex;
     return hex.substring(0, len) + '…';
+  }
+
+  function fetchThenVerify(receiptId) {
+    clearResults();
+    setLoading(true);
+    fetch(RECEIPT_URL + encodeURIComponent(receiptId), { headers: { Accept: 'application/json' } })
+      .then(function (res) {
+        if (res.status === 404) {
+          throw new Error('No receipt found with id "' + receiptId + '".');
+        }
+        if (!res.ok) {
+          throw new Error('Could not fetch the receipt (server returned ' + res.status + ').');
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        var cose = data.cose_signed_blob_b64;
+        if (!cose) {
+          throw new Error('That receipt has no signature blob to verify.');
+        }
+        runVerification(cose);
+      })
+      .catch(function (err) {
+        setLoading(false);
+        clearResults();
+        resultsSection.classList.add('visible');
+        renderErrors([err.message || 'Could not reach the coordinator.']);
+      });
   }
 
   function runVerification(receiptB64) {

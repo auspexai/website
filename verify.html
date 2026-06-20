@@ -291,12 +291,12 @@
 
   <section class="verify-hero">
     <h1>Verify a Receipt</h1>
-    <p class="explainer">Paste a base64-encoded COSE receipt to verify its signature and inspect its contents.</p>
+    <p class="explainer">Enter a receipt id (rcpt-…) to verify its signature and inspect its contents — the page fetches the signed receipt for you.</p>
   </section>
 
   <section class="verify-form">
-    <label for="receipt-input" class="sr-only" style="position:absolute;left:-9999px;">Receipt data</label>
-    <textarea id="receipt-input" placeholder="Paste base64-encoded COSE receipt here..." spellcheck="false" autocomplete="off"></textarea>
+    <label for="receipt-input" class="sr-only" style="position:absolute;left:-9999px;">Receipt id</label>
+    <textarea id="receipt-input" placeholder="Enter a receipt id (rcpt-…)" spellcheck="false" autocomplete="off"></textarea>
     <button type="button" class="verify-btn" id="verify-btn">
       <span class="btn-label">Verify</span>
       <span class="spinner" aria-hidden="true"></span>
