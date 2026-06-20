@@ -110,6 +110,24 @@
     return hex.substring(0, len) + '…';
   }
 
+  function extractMsg(parsed) {
+    // Pull a human string out of the coordinator's error body, which may be
+    // {detail: "..."} or the nested envelope {detail: {error: {code, message}}}.
+    // (Previously this rendered an object as the useless "[object Object]".)
+    if (!parsed || typeof parsed !== 'object') return '';
+    var d = (parsed.detail !== undefined && parsed.detail !== null) ? parsed.detail : parsed.error;
+    if (typeof d === 'string') return d;
+    if (d && typeof d === 'object') {
+      var e = d.error || d;
+      if (typeof e === 'string') return e;
+      if (e && (e.message || e.code)) {
+        return (e.message || '') + (e.code ? ' (' + e.code + ')' : '');
+      }
+      try { return JSON.stringify(d); } catch (x) { return ''; }
+    }
+    return '';
+  }
+
   function fetchThenVerify(receiptId) {
     clearResults();
     setLoading(true);
@@ -154,8 +172,8 @@
             // Try to extract a message from JSON response
             try {
               var parsed = JSON.parse(body);
-              if (parsed.detail) msg += ': ' + parsed.detail;
-              else if (parsed.error) msg += ': ' + parsed.error;
+              var detail = extractMsg(parsed);
+              if (detail) msg += ': ' + detail;
             } catch (e) {
               if (body) msg += ': ' + body.substring(0, 200);
             }
