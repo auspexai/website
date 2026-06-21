@@ -9,6 +9,8 @@
 
   var VERIFY_URL = 'https://coord.auspexai.network/api/v0/receipts/verify';
   var RECEIPT_URL = 'https://coord.auspexai.network/api/v0/receipts/';
+  var CERT_URL = 'https://coord.auspexai.network/api/v0/certifications/';
+  var REKOR_ENTRIES = 'https://rekor.sigstore.dev/api/v1/log/entries';
 
   var textarea = document.getElementById('receipt-input');
   var btn = document.getElementById('verify-btn');
@@ -25,11 +27,14 @@
       textarea.focus();
       return;
     }
-    // Primary path: a receipt id (rcpt-…). The page fetches the signed blob by id
-    // and verifies it — no one should have to hold a raw COSE. A pasted blob still
-    // works as a fallback (anything that isn't a receipt id is treated as one).
+    // Three inputs, auto-detected:
+    //  - a receipt id (rcpt-…)            → fetch the receipt blob, verify signature
+    //  - a 64-hex package digest          → fetch the published cert, verify + Rekor
+    //  - anything else                    → treat as a pasted raw COSE blob
     if (/^rcpt-/i.test(raw)) {
       fetchThenVerify(raw);
+    } else if (/^[0-9a-f]{64}$/i.test(raw)) {
+      verifyCertificate(raw.toLowerCase());
     } else {
       runVerification(raw.replace(/\s+/g, ''));
     }
@@ -50,6 +55,8 @@
     stepsContainer.innerHTML = '';
     stepsContainer.appendChild(heading);
     decodedJson.textContent = '';
+    var dh = decodedReceipt.querySelector('.decoded-heading');
+    if (dh) dh.textContent = 'Decoded receipt body';
     errorList.innerHTML = '';
     errorsContainer.classList.remove('visible');
     decodedReceipt.style.display = '';
@@ -260,5 +267,108 @@
 
     // Errors
     renderErrors(data.errors);
+  }
+
+  // ---- Certification verification (RFC 0001 / Research Ethics §6.7) ----------
+  // A cert is verified like a receipt — signature + authorized signer — but its
+  // trust ANCHOR is PUBLIC Rekor: we fetch the published cert (blob + logIndex)
+  // and confirm, against the transparency log we do NOT control, that this exact
+  // blob was logged. So the verdict never depends on trusting the coordinator.
+  function verifyCertificate(digest) {
+    clearResults();
+    setLoading(true);
+    fetch(CERT_URL + encodeURIComponent(digest), { headers: { Accept: 'application/json' } })
+      .then(function (res) {
+        if (res.status === 404) throw new Error('No certification found for package ' + digest + '.');
+        if (!res.ok) throw new Error('Could not fetch the certification (server returned ' + res.status + ').');
+        return res.json();
+      })
+      .then(function (cert) {
+        if (!cert.cose_signed_blob_b64) throw new Error('That certification has no signature blob.');
+        return fetch(VERIFY_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ receipt_cose_b64: cert.cose_signed_blob_b64 })
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (v) {
+            return rekorInclusionCheck(cert.cose_signed_blob_b64, cert.rekor_log_index)
+              .then(function (rekor) { return { cert: cert, verify: v, rekor: rekor }; });
+          });
+      })
+      .then(function (bundle) { setLoading(false); renderCertResult(bundle); })
+      .catch(function (err) {
+        setLoading(false);
+        clearResults();
+        resultsSection.classList.add('visible');
+        renderErrors([err.message || 'Could not verify the certification.']);
+      });
+  }
+
+  // The independent step: hash the blob in-browser and compare to the hash the
+  // PUBLIC Rekor log recorded at this index. Fetched straight from sigstore — if
+  // CORS blocks the browser, we degrade to a pointer the user can open themselves.
+  function rekorInclusionCheck(coseB64, logIndex) {
+    if (logIndex === null || logIndex === undefined) {
+      return Promise.resolve({ status: 'pending', detail: 'not yet anchored in Rekor' });
+    }
+    return fetch(REKOR_ENTRIES + '?logIndex=' + encodeURIComponent(logIndex))
+      .then(function (r) { if (!r.ok) throw new Error('Rekor returned ' + r.status); return r.json(); })
+      .then(function (d) {
+        var uuid = Object.keys(d)[0];
+        var body = JSON.parse(atob(d[uuid].body));
+        var anchored = body.spec.data.hash.value;
+        return crypto.subtle.digest('SHA-256', b64ToBytes(coseB64)).then(function (buf) {
+          var computed = bufToHex(buf);
+          return computed === anchored
+            ? { status: 'pass', detail: 'logIndex ' + logIndex + ' · blob hash matches the public log' }
+            : { status: 'fail', detail: 'blob hash does NOT match the Rekor entry' };
+        });
+      })
+      .catch(function (e) {
+        return { status: 'pending', detail: 'logIndex ' + logIndex + ' — open rekor.sigstore.dev to confirm (' + e.message + ')' };
+      });
+  }
+
+  function renderCertResult(b) {
+    resultsSection.classList.add('visible');
+    var cert = b.cert, v = b.verify, rekor = b.rekor;
+    renderStep('Certification status', cert.status === 'certified' ? 'pass' : 'fail',
+      cert.status + (cert.revoked_reason ? ' — ' + cert.revoked_reason : ''));
+    renderStep('Signature',
+      v.signature_valid === true ? 'pass' : v.signature_valid === false ? 'fail' : 'pending',
+      v.signer_kid ? 'kid ' + truncateHex(v.signer_kid) : '');
+    renderStep('Authorized signer',
+      v.authorized_signer === true ? 'pass' : v.authorized_signer === false ? 'fail' : 'pending',
+      v.authorized_signer === true ? 'on the published roster'
+        : (v.authorized_signer_note || 'roster check pending'));
+    renderStep('Public Rekor inclusion', rekor.status, rekor.detail);
+
+    var summary = {
+      certifies: cert.tenant_id + '/' + cert.profile_name,
+      snapshot: cert.snapshot_version,
+      package_sha256: cert.package_sha256,
+      research_class: cert.research_class,
+      models: cert.model_ids,
+      replication_floor: cert.replication_floor,
+      rekor_log_index: cert.rekor_log_index,
+      certified_at: cert.certified_at
+    };
+    decodedJson.textContent = JSON.stringify(summary, null, 2);
+    decodedReceipt.style.display = '';
+    var heading = decodedReceipt.querySelector('.decoded-heading');
+    if (heading) heading.textContent = 'Certified profile';
+    renderErrors(v.errors);
+  }
+
+  function b64ToBytes(b64) {
+    var bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  function bufToHex(buf) {
+    var v = new Uint8Array(buf), s = '';
+    for (var i = 0; i < v.length; i++) s += v[i].toString(16).padStart(2, '0');
+    return s;
   }
 })();
