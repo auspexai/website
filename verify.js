@@ -373,7 +373,11 @@
     decodedReceipt.style.display = '';
     var heading = decodedReceipt.querySelector('.decoded-heading');
     if (heading) heading.textContent = 'Certified profile';
-    renderErrors(v.errors);
+    // Drop the receipt-SCHEMA error: a certificate isn't a receipt, so the shared
+    // /receipts/verify endpoint's schema parse always fails on a cert payload. That
+    // failure is meaningless here — the cert's verdict is signature + signer + Rekor.
+    var certErrors = (v.errors || []).filter(function (e) { return !/^schema/i.test(e); });
+    renderErrors(certErrors);
   }
 
   function b64ToBytes(b64) {
