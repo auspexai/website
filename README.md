@@ -14,3 +14,13 @@ Single static page (`index.html` + `style.css`); served by GitHub Pages at the c
 ## License
 
 [AGPL-3.0](LICENSE).
+
+
+## Drift Benchmark board
+
+`benchmarks.html` renders `registry/benchmarks.json` — a MACHINE-ADMITTED registry:
+researchers run `auspexai-tenant benchmark publish <run>`, which POSTs a self-grounding
+signed entry to the submit Worker (`submit-worker/`); the Worker opens a PR adding it
+under `entries/`; CI (`.github/workflows/benchmark-entries.yml`) verifies the entry
+(publisher signature + coordinator-signed custody of both experiments, pinned signer)
+and auto-merges on green; the registry rebuilds on a schedule. No human curator.
