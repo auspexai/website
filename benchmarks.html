@@ -115,18 +115,20 @@
 
   function deltaLabel(e) {
     if (!e.config_delta) {
-      // pre-delta entry (older SDK): never claim "no change" — show the run.
       return { head: (e.observation || {}).label || (e.observation || {}).experiment_id, sub: null };
     }
-    var d = e.config_delta;
-    var ch = d.changed || {};
-    var keys = Object.keys(ch);
-    if (!keys.length) return { head: 'no declared change', sub: 'temporal control — same configuration, later in time' };
-    var parts = keys.map(function (k) {
-      var c = ch[k];
-      return k + ': ' + (c.from == null ? '—' : c.from) + ' → ' + (c.to == null ? '—' : c.to);
-    });
-    return { head: parts.join('  ·  '), sub: null };
+    var ch = (e.config_delta || {}).changed || {};
+    // Public labels: only behavior-relevant dimensions, in plain words.
+    // Apparatus-internal changes (reducer mode, schema bookkeeping) stay in the
+    // signed registry but don't label the chart.
+    if (ch.model) {
+      return { head: 'A different model', sub: enc(ch.model.to) + ' in place of ' + enc(ch.model.from) };
+    }
+    if (ch.generation) {
+      var m = /temp=([0-9.]+)/.exec(ch.generation.to || '');
+      return { head: 'Randomness turned on', sub: 'sampled generation (temperature ' + (m ? m[1] : '>0') + ') instead of deterministic' };
+    }
+    return { head: 'Same setup, run again later', sub: 'checks for drift over time — nothing was deliberately changed' };
   }
 
   function trackSvg(rows, maxEu) {
@@ -154,7 +156,9 @@
         s += '<circle cx="' + x(pr.peak_eu) + '" cy="' + (y + 39) + '" r="4.5" fill="#a78bfa" stroke="#070a12" stroke-width="1.5"><title>' + enc(pr.key) + ': ' + pr.peak_eu.toFixed(2) + ' EU</title></circle>';
       });
       s += '<text x="' + (W - PADR + 8) + '" y="' + (y + 44) + '" fill="#fff" font-size="15" font-weight="800">' + (peak == null ? 'n/a' : peak.toFixed(2)) + '<tspan fill="#8b90a0" font-size="11" font-weight="400"> EU</tspan></text>';
-      var meta = pct(rep.breadth) + ' of probes beyond · byte-div ' + pct(rep.byte_divergence_rate);
+      var n = (rep.probes || []).length;
+      var moved = (rep.probes || []).filter(function (pr) { return pr.peak_eu != null && pr.peak_eu >= 1; }).length;
+      var meta = n ? ('behavior shifted in ' + moved + ' of ' + n + ' prompt sets') : '';
       s += '<text x="' + PADL + '" y="' + (y + 60) + '" fill="#8b90a0" font-size="11">' + enc(meta) + '</text>';
       // links + signature live in HTML below the svg per row? keep inline:
     });
