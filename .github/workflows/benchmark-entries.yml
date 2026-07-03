@@ -26,9 +26,10 @@ jobs:
         run: python scripts/validate_and_build_registry.py
       - name: Guard — PRs may ONLY touch entries/
         if: github.event_name == 'pull_request'
+        env: { GH_TOKEN: "${{ github.token }}" }
         run: |
-          git fetch origin "$GITHUB_BASE_REF" --depth=1
-          CHANGED=$(git diff --name-only "origin/$GITHUB_BASE_REF"...HEAD)
+          CHANGED=$(gh pr view "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" --json files --jq '.files[].path')
           echo "$CHANGED"
           if echo "$CHANGED" | grep -v '^entries/'; then
             echo "::error::entry PRs may only add/modify files under entries/"; exit 1
