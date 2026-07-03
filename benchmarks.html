@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Drift Benchmark — auspex[ai]</title>
+  <meta name="description" content="The AuspexAI Drift Benchmark: model-behavior drift in envelope units, every number traceable to signed, publicly-anchored evidence.">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="favicon.ico">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #070a12; color: #e6e8ee; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; }
+    a { color: #a78bfa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    header.site { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 2.5rem; }
+    .brand { font-weight: 800; font-size: 1.15rem; color: #fff; letter-spacing: -0.5px; }
+    .brand .brk { color: #a78bfa; }
+    .tag { font-size: 0.8rem; color: #8b90a0; }
+    h1 { font-size: 2rem; font-weight: 800; letter-spacing: -1px; color: #fff; margin-bottom: 0.4rem; }
+    .lead { color: #b9bdc9; max-width: 46rem; margin-bottom: 1.1rem; }
+    .explainer { background: #0d1120; border: 1px solid #1c2236; border-radius: 10px; padding: 1.1rem 1.3rem; margin: 1.4rem 0 2.2rem; font-size: 0.92rem; color: #b9bdc9; }
+    .explainer strong { color: #e6e8ee; }
+    .explainer .eu { color: #a78bfa; font-weight: 700; }
+    h2.track { font-size: 1.15rem; color: #fff; margin: 2.2rem 0 0.2rem; }
+    .track-meta { font-size: 0.82rem; color: #8b90a0; margin-bottom: 0.9rem; }
+    .track-meta code, td code, .foot code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; color: #cdd1dc; background: #131829; padding: 0.1em 0.35em; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+    th { text-align: left; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: #8b90a0; padding: 0.5rem 0.9rem 0.5rem 0; border-bottom: 1px solid #1c2236; }
+    td { padding: 0.65rem 0.9rem 0.65rem 0; border-bottom: 1px solid #131829; vertical-align: top; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .peak { font-weight: 800; color: #fff; white-space: nowrap; }
+    .peak .unit { font-weight: 400; color: #8b90a0; font-size: 0.85em; }
+    .bar { height: 6px; border-radius: 3px; background: #86b6ef; margin-top: 5px; }
+    .bar-track { width: 120px; height: 6px; border-radius: 3px; background: #131829; position: relative; }
+    .bar-track .thresh { position: absolute; top: -3px; bottom: -3px; width: 1px; background: #8b90a0; }
+    .muted { color: #8b90a0; }
+    .sig-ok { color: #34d399; }
+    .sig-bad { color: #f87171; }
+    .probe-line { font-size: 0.8rem; color: #8b90a0; margin-top: 0.25rem; }
+    .empty { border: 1px dashed #1c2236; border-radius: 10px; padding: 2rem; text-align: center; color: #8b90a0; margin-top: 1.5rem; }
+    .foot { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid #1c2236; font-size: 0.85rem; color: #8b90a0; }
+    .foot pre { background: #0d1120; border: 1px solid #1c2236; border-radius: 8px; padding: 0.8rem 1rem; margin: 0.6rem 0; overflow-x: auto; color: #cdd1dc; font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="/">auspex<span class="brk">[</span>ai<span class="brk">]</span></a>
+    <span class="tag">drift benchmark</span>
+  </header>
+
+  <h1>The AuspexAI Drift Benchmark</h1>
+  <p class="lead">
+    Our apparatus, measured. Each row scores one experiment's <em>behavior</em> against a
+    fixed, signed baseline — the same model-serving stack, probed repeatedly over time and
+    across configurations. Every number on this page traces to cryptographically signed,
+    publicly anchored evidence. Don't trust the chart — verify the cell.
+  </p>
+
+  <div class="explainer">
+    <strong>How to read it.</strong> Drift is measured in <span class="eu">envelope units (EU)</span>:
+    each declared behavioral feature's shift, divided by that feature's <em>calibrated</em>
+    tolerance — the empirically measured noise floor of the same configuration on a
+    heterogeneous volunteer fleet. <strong>1.0&nbsp;EU is the boundary</strong> between noise and
+    drift; the magnitude reads as "how many times the noise floor did behavior move."
+    The headline is a pair: <strong>peak</strong> (the worst probe) and <strong>breadth</strong>
+    (the fraction of probes beyond the envelope). Byte-level divergence and within-run
+    disagreement are reported separately — never folded into the score. Scores are comparable
+    only <em>within a track</em> (one baseline = one envelope); comparing across tracks is
+    a stated non-goal.
+  </div>
+
+  <div id="board"><p class="muted">Loading registry…</p></div>
+
+  <div class="foot">
+    <strong>Verify any entry yourself.</strong> Each entry is an Ed25519-signed claim by the
+    publishing researcher (this page also checks the signatures in your browser). The
+    attestation links go to the public Rekor transparency log; deep verification re-derives
+    every number from the signed evidence bundles:
+    <pre>pip install auspexai-tenant
+auspexai-tenant benchmark verify-entry entry.json     # the signed claim
+auspexai-tenant bundle verify bundle.json             # the evidence itself
+auspexai-tenant benchmark drift OBS.json REF.json     # recompute the score</pre>
+    Methodology: the Drift Benchmark standard (envelope units, peak + breadth, calibrated
+    tolerances) is part of the open AuspexAI platform.
+    Registry: <a href="registry/benchmarks.json">benchmarks.json</a> (curated; entries are
+    tenant-signed and inclusion is deliberate).
+  </div>
+</div>
+
+<script>
+(function () {
+  var enc = function (s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
+  var pct = function (v) { return v == null ? '—' : Math.round(v * 100) + '%'; };
+  var rekor = function (a) {
+    if (!a || !a.rekor_entry_uuid || a.rekor_entry_uuid === 'lab-mode-no-rekor') return null;
+    return 'https://search.sigstore.dev/?uuid=' + encodeURIComponent(a.rekor_entry_uuid);
+  };
+
+  function b64ToBytes(b64) { return Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); }); }
+
+  // The envelope carries the EXACT signed bytes (payload_b64) — verify over
+  // them and parse the payload FROM them; render nothing else. The pubkey
+  // inside the payload must equal the envelope's (key identity is signed).
+  function openEntry(entry) {
+    try {
+      var body = b64ToBytes(entry.payload_b64);
+      var payload = JSON.parse(new TextDecoder().decode(body));
+      if (payload.publisher_pubkey_hex !== entry.publisher_pubkey_hex) return Promise.resolve({ payload: null, ok: false });
+      var pub = Uint8Array.from(entry.publisher_pubkey_hex.match(/../g).map(function (h) { return parseInt(h, 16); }));
+      var sig = b64ToBytes(entry.signature_b64);
+      return crypto.subtle.importKey('raw', pub, { name: 'Ed25519' }, false, ['verify'])
+        .then(function (key) { return crypto.subtle.verify({ name: 'Ed25519' }, key, sig, body); })
+        .then(function (ok) { return { payload: payload, ok: ok }; })
+        .catch(function () { return { payload: payload, ok: null }; });
+    } catch (e) { return Promise.resolve({ payload: null, ok: false }); }
+  }
+
+  function entryRow(e, sigOk, maxEu) {
+    var r = e.report || {};
+    var peak = r.peak_eu;
+    var frac = peak == null ? 0 : Math.min(peak / maxEu, 1);
+    var obsRekor = rekor((e.observation || {}).attestation);
+    var refRekor = rekor((e.reference || {}).attestation);
+    var probes = (r.probes || []).map(function (p) {
+      return enc(p.key) + ' ' + (p.peak_eu == null ? 'n/a' : p.peak_eu.toFixed(2));
+    }).join(' · ');
+    return '<tr>' +
+      '<td><strong>' + enc((e.observation || {}).label || (e.observation || {}).experiment_id) + '</strong>' +
+      '<div class="probe-line">' + probes + '</div>' +
+      '<div class="probe-line">' +
+      (obsRekor ? '<a href="' + obsRekor + '">run attestation ↗</a> · ' : '') +
+      (refRekor ? '<a href="' + refRekor + '">baseline attestation ↗</a> · ' : '') +
+      'publisher <code>' + enc((e.publisher_pubkey_hex || '').slice(0, 12)) + '…</code> ' +
+      (sigOk === true ? '<span class="sig-ok">signature ✓</span>'
+        : sigOk === false ? '<span class="sig-bad">signature ✗</span>'
+        : '<span class="muted">verify locally (browser lacks Ed25519)</span>') + '</div></td>' +
+      '<td class="num"><span class="peak">' + (peak == null ? 'n/a' : peak.toFixed(2)) + ' <span class="unit">EU</span></span>' +
+      '<div class="bar-track"><div class="bar" style="width:' + (frac * 100).toFixed(0) + '%"></div>' +
+      '<div class="thresh" style="left:' + Math.min(100 / maxEu, 100).toFixed(1) + '%"></div></div></td>' +
+      '<td class="num muted">' + pct(r.breadth) + '</td>' +
+      '<td class="num muted">' + pct(r.byte_divergence_rate) + '</td>' +
+      '<td class="num muted">' + enc((e.published_at || '').slice(0, 10)) + '</td>' +
+      '</tr>';
+  }
+
+  fetch('registry/benchmarks.json?v=' + Date.now()).then(function (r) { return r.json(); }).then(function (reg) {
+    var board = document.getElementById('board');
+    var entries = reg.entries || [];
+    if (!entries.length) {
+      board.innerHTML = '<div class="empty">No published entries yet. Entries appear here when a researcher deliberately publishes a signed score (<code>auspexai-tenant benchmark publish</code>) and the curator includes it.</div>';
+      return;
+    }
+    // Verify FIRST; render only verified payloads (byte-exact — the page shows
+    // nothing that isn't covered by the publisher's signature).
+    Promise.all(entries.map(openEntry)).then(function (opened) {
+      var rows = opened.map(function (o, i) {
+        return { payload: o.payload, ok: o.ok, envelope: entries[i] };
+      }).filter(function (r) { return r.payload; });
+      if (!rows.length) {
+        board.innerHTML = '<div class="empty">Registry entries present but none could be opened.</div>';
+        return;
+      }
+      var tracks = {};
+      rows.forEach(function (r) {
+        var refId = ((r.payload.reference || {}).experiment_id) || 'unknown';
+        (tracks[refId] = tracks[refId] || []).push(r);
+      });
+      var maxEu = Math.max(10, Math.max.apply(null, rows.map(function (r) { return (r.payload.report || {}).peak_eu || 0; })));
+      var html = '';
+      Object.keys(tracks).forEach(function (refId) {
+        var es = tracks[refId].slice().sort(function (a, b) { return ((a.payload.report || {}).peak_eu || 0) - ((b.payload.report || {}).peak_eu || 0); });
+        var ref = es[0].payload.reference || {};
+        html += '<h2 class="track">Track: vs <code>' + enc(ref.label || refId) + '</code></h2>' +
+          '<p class="track-meta">baseline experiment <code>' + enc(refId) + '</code> — its signed manifest defines this track\'s envelope. Scores below compare only to each other.</p>' +
+          '<table><thead><tr><th>run</th><th class="num">peak drift</th><th class="num">breadth</th><th class="num">byte-div</th><th class="num">published</th></tr></thead><tbody>' +
+          es.map(function (r) { return entryRow(r.payload, r.ok, maxEu); }).join('') + '</tbody></table>';
+      });
+      board.innerHTML = html;
+    });
+  }).catch(function () {
+    document.getElementById('board').innerHTML = '<div class="empty">Could not load the registry.</div>';
+  });
+})();
+</script>
+</body>
+</html>
