@@ -1,0 +1,47 @@
+name: benchmark-entries
+# G5 researcher-push: entries are ADMITTED BY MACHINES. PRs touching entries/
+# get the grounded validation as a required check and auto-merge on green
+# (only when nothing outside entries/ changed); pushes to main rebuild the
+# registry from the admitted set.
+on:
+  pull_request:
+    paths: ["entries/**"]
+  push:
+    branches: [main]
+    paths: ["entries/**", "scripts/validate_and_build_registry.py"]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install --quiet auspexai-tenant
+      - name: Grounded admission check + registry rebuild
+        run: python scripts/validate_and_build_registry.py
+      - name: Guard — PRs may ONLY touch entries/
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin "$GITHUB_BASE_REF" --depth=1
+          CHANGED=$(git diff --name-only "origin/$GITHUB_BASE_REF"...HEAD)
+          echo "$CHANGED"
+          if echo "$CHANGED" | grep -v '^entries/'; then
+            echo "::error::entry PRs may only add/modify files under entries/"; exit 1
+          fi
+      - name: Auto-merge admitted entry PRs
+        if: github.event_name == 'pull_request'
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh pr merge "${{ github.event.pull_request.number }}" --squash --auto || true
+      - name: Commit the rebuilt registry (main)
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "benchmark-registry-bot"
+          git config user.email "noreply@auspexai.network"
+          git add registry/benchmarks.json
+          git diff --cached --quiet || git commit -m "registry: rebuild from admitted entries [skip ci]"
+          git push
