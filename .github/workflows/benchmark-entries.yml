@@ -24,6 +24,20 @@ jobs:
       - run: pip install --quiet auspexai-tenant
       - name: Grounded admission check + registry rebuild
         run: python scripts/validate_and_build_registry.py
+      - name: Sync rebuilt registry INTO the PR (merge-token pushes fire no events)
+        if: github.event_name == 'pull_request'
+        id: regsync
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          if git diff --quiet registry/benchmarks.json; then
+            echo "in_sync=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          HEAD="${{ github.event.pull_request.head.ref }}"
+          SHA=$(gh api "repos/${{ github.repository }}/contents/registry/benchmarks.json?ref=$HEAD" --jq .sha)
+          gh api -X PUT "repos/${{ github.repository }}/contents/registry/benchmarks.json" \
+            -f branch="$HEAD" -f message="registry: rebuild from admitted entries" \
+            -f content="$(base64 -w0 registry/benchmarks.json)" -f sha="$SHA"
+          echo "in_sync=false" >> "$GITHUB_OUTPUT"
       - name: Guard — PRs may ONLY touch entries/
         if: github.event_name == 'pull_request'
         env: { GH_TOKEN: "${{ github.token }}" }
@@ -31,11 +45,11 @@ jobs:
           CHANGED=$(gh pr view "${{ github.event.pull_request.number }}" \
             --repo "${{ github.repository }}" --json files --jq '.files[].path')
           echo "$CHANGED"
-          if echo "$CHANGED" | grep -v '^entries/'; then
+          if echo "$CHANGED" | grep -v -e '^entries/' -e '^registry/benchmarks\.json$'; then
             echo "::error::entry PRs may only add/modify files under entries/"; exit 1
           fi
       - name: Auto-merge admitted entry PRs
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.regsync.outputs.in_sync == 'true'
         env: { GH_TOKEN: "${{ github.token }}" }
         run: gh pr merge "${{ github.event.pull_request.number }}" --squash --auto || true
       - name: Commit the rebuilt registry (main)
