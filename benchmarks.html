@@ -38,6 +38,7 @@
     .sig-ok { color: #34d399; }
     .sig-bad { color: #f87171; }
     .probe-line { font-size: 0.8rem; color: #8b90a0; margin-top: 0.25rem; }
+    .note { font-size: 0.88rem; color: #b9bdc9; margin-top: 0.2rem; }
     .empty { border: 1px dashed #1c2236; border-radius: 10px; padding: 2rem; text-align: center; color: #8b90a0; margin-top: 1.5rem; }
     .foot { margin-top: 3rem; padding-top: 1.25rem; border-top: 1px solid #1c2236; font-size: 0.85rem; color: #8b90a0; }
     .foot pre { background: #0d1120; border: 1px solid #1c2236; border-radius: 8px; padding: 0.8rem 1rem; margin: 0.6rem 0; overflow-x: auto; color: #cdd1dc; font-size: 0.82rem; }
@@ -128,6 +129,7 @@ auspexai-tenant benchmark drift OBS.json REF.json     # recompute the score</pre
     }).join(' · ');
     return '<tr>' +
       '<td><strong>' + enc((e.observation || {}).label || (e.observation || {}).experiment_id) + '</strong>' +
+      (e.note ? '<div class="note">' + enc(e.note) + '</div>' : '') +
       '<div class="probe-line">' + probes + '</div>' +
       '<div class="probe-line">' +
       (obsRekor ? '<a href="' + obsRekor + '">run attestation ↗</a> · ' : '') +
