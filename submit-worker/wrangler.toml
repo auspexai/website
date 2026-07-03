@@ -1,0 +1,5 @@
+name = "auspexai-board-submit"
+main = "worker.js"
+compatibility_date = "2026-06-01"
+# Secret (set once): wrangler secret put GITHUB_TOKEN
+# → a FINE-GRAINED PAT scoped to auspexai/website only: Contents RW + Pull requests RW.
