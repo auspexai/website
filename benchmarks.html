@@ -118,66 +118,92 @@ auspexai-tenant benchmark drift OBS.json REF.json     # recompute the score</pre
     } catch (e) { return Promise.resolve({ payload: null, ok: false }); }
   }
 
-  function entryRow(e, sigOk, maxEu) {
-    var r = e.report || {};
-    var peak = r.peak_eu;
-    var frac = peak == null ? 0 : Math.min(peak / maxEu, 1);
+  function deltaLabel(e) {
+    if (!e.config_delta) {
+      // pre-delta entry (older SDK): never claim "no change" — show the run.
+      return { head: (e.observation || {}).label || (e.observation || {}).experiment_id, sub: null };
+    }
+    var d = e.config_delta;
+    var ch = d.changed || {};
+    var keys = Object.keys(ch);
+    if (!keys.length) return { head: 'no declared change', sub: 'temporal control — same configuration, later in time' };
+    var parts = keys.map(function (k) {
+      var c = ch[k];
+      return k + ': ' + (c.from == null ? '—' : c.from) + ' → ' + (c.to == null ? '—' : c.to);
+    });
+    return { head: parts.join('  ·  '), sub: null };
+  }
+
+  function trackSvg(rows, maxEu) {
+    var W = 860, ROWH = 74, PADL = 8, PADR = 90, PADT = 26, PADB = 30;
+    var H = PADT + rows.length * ROWH + PADB;
+    var plotW = W - PADL - PADR;
+    var x = function (eu) { return PADL + Math.min(eu / maxEu, 1) * plotW; };
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto" role="img" aria-label="Drift Benchmark ladder">';
+    // threshold line at 1 EU
+    var tx = x(1);
+    s += '<line x1="' + tx + '" y1="' + (PADT - 14) + '" x2="' + tx + '" y2="' + (H - PADB + 8) + '" stroke="#8b90a0" stroke-dasharray="4 3" stroke-width="1"/>';
+    s += '<text x="' + (tx + 6) + '" y="' + (PADT - 16) + '" fill="#8b90a0" font-size="11">calibrated noise floor (1 EU)</text>';
+    rows.forEach(function (r, i) {
+      var e = r.payload, rep = e.report || {};
+      var y = PADT + i * ROWH;
+      var lbl = deltaLabel(e);
+      var peak = rep.peak_eu;
+      var bw = peak == null ? 0 : (x(peak) - PADL);
+      s += '<text x="' + PADL + '" y="' + (y + 12) + '" fill="#e6e8ee" font-size="13" font-weight="700">' + enc(lbl.head) + '</text>';
+      if (lbl.sub) s += '<text x="' + PADL + '" y="' + (y + 27) + '" fill="#8b90a0" font-size="11">' + enc(lbl.sub) + '</text>';
+      s += '<rect x="' + PADL + '" y="' + (y + 34) + '" width="' + plotW + '" height="10" rx="5" fill="#131829"/>';
+      s += '<rect x="' + PADL + '" y="' + (y + 34) + '" width="' + Math.max(bw, 2) + '" height="10" rx="5" fill="#86b6ef"/>';
+      (rep.probes || []).forEach(function (pr) {
+        if (pr.peak_eu == null) return;
+        s += '<circle cx="' + x(pr.peak_eu) + '" cy="' + (y + 39) + '" r="4.5" fill="#a78bfa" stroke="#070a12" stroke-width="1.5"><title>' + enc(pr.key) + ': ' + pr.peak_eu.toFixed(2) + ' EU</title></circle>';
+      });
+      s += '<text x="' + (W - PADR + 8) + '" y="' + (y + 44) + '" fill="#fff" font-size="15" font-weight="800">' + (peak == null ? 'n/a' : peak.toFixed(2)) + '<tspan fill="#8b90a0" font-size="11" font-weight="400"> EU</tspan></text>';
+      var meta = pct(rep.breadth) + ' of probes beyond · byte-div ' + pct(rep.byte_divergence_rate);
+      s += '<text x="' + PADL + '" y="' + (y + 60) + '" fill="#8b90a0" font-size="11">' + enc(meta) + '</text>';
+      // links + signature live in HTML below the svg per row? keep inline:
+    });
+    s += '</svg>';
+    return s;
+  }
+
+  function rowLinks(r) {
+    var e = r.payload;
     var obsRekor = rekor((e.observation || {}).attestation);
     var refRekor = rekor((e.reference || {}).attestation);
-    var probes = (r.probes || []).map(function (p) {
-      return enc(p.key) + ' ' + (p.peak_eu == null ? 'n/a' : p.peak_eu.toFixed(2));
-    }).join(' · ');
-    return '<tr>' +
-      '<td><strong>' + enc((e.observation || {}).label || (e.observation || {}).experiment_id) + '</strong>' +
-      (e.note ? '<div class="note">' + enc(e.note) + '</div>' : '') +
-      '<div class="probe-line">' + probes + '</div>' +
-      '<div class="probe-line">' +
+    var sig = r.ok === true ? '<span class="sig-ok">signature ✓</span>'
+      : r.ok === false ? '<span class="sig-bad">signature ✗</span>'
+      : '<span class="muted">verify locally (browser lacks Ed25519)</span>';
+    return '<div class="probe-line">run <code>' + enc((e.observation || {}).label || (e.observation || {}).experiment_id) + '</code> · ' +
       (obsRekor ? '<a href="' + obsRekor + '">run attestation ↗</a> · ' : '') +
       (refRekor ? '<a href="' + refRekor + '">baseline attestation ↗</a> · ' : '') +
-      'publisher <code>' + enc((e.publisher_pubkey_hex || '').slice(0, 12)) + '…</code> ' +
-      (sigOk === true ? '<span class="sig-ok">signature ✓</span>'
-        : sigOk === false ? '<span class="sig-bad">signature ✗</span>'
-        : '<span class="muted">verify locally (browser lacks Ed25519)</span>') + '</div></td>' +
-      '<td class="num"><span class="peak">' + (peak == null ? 'n/a' : peak.toFixed(2)) + ' <span class="unit">EU</span></span>' +
-      '<div class="bar-track"><div class="bar" style="width:' + (frac * 100).toFixed(0) + '%"></div>' +
-      '<div class="thresh" style="left:' + Math.min(100 / maxEu, 100).toFixed(1) + '%"></div></div></td>' +
-      '<td class="num muted">' + pct(r.breadth) + '</td>' +
-      '<td class="num muted">' + pct(r.byte_divergence_rate) + '</td>' +
-      '<td class="num muted">' + enc((e.published_at || '').slice(0, 10)) + '</td>' +
-      '</tr>';
+      'publisher <code>' + enc((e.publisher_pubkey_hex || '').slice(0, 12)) + '…</code> ' + sig + '</div>';
   }
 
   fetch('registry/benchmarks.json?v=' + Date.now()).then(function (r) { return r.json(); }).then(function (reg) {
     var board = document.getElementById('board');
     var entries = reg.entries || [];
     if (!entries.length) {
-      board.innerHTML = '<div class="empty">No published entries yet. Entries appear here when a researcher deliberately publishes a signed score (<code>auspexai-tenant benchmark publish</code>) and the curator includes it.</div>';
+      board.innerHTML = '<div class="empty">No published entries yet. Entries appear here when a researcher publishes a signed score (<code>auspexai-tenant benchmark publish</code>).</div>';
       return;
     }
-    // Verify FIRST; render only verified payloads (byte-exact — the page shows
-    // nothing that isn't covered by the publisher's signature).
     Promise.all(entries.map(openEntry)).then(function (opened) {
-      var rows = opened.map(function (o, i) {
-        return { payload: o.payload, ok: o.ok, envelope: entries[i] };
-      }).filter(function (r) { return r.payload; });
-      if (!rows.length) {
-        board.innerHTML = '<div class="empty">Registry entries present but none could be opened.</div>';
-        return;
-      }
+      var rows = opened.filter(function (o) { return o.payload; });
+      if (!rows.length) { board.innerHTML = '<div class="empty">Registry entries present but none could be opened.</div>'; return; }
       var tracks = {};
       rows.forEach(function (r) {
         var refId = ((r.payload.reference || {}).experiment_id) || 'unknown';
         (tracks[refId] = tracks[refId] || []).push(r);
       });
-      var maxEu = Math.max(10, Math.max.apply(null, rows.map(function (r) { return (r.payload.report || {}).peak_eu || 0; })));
+      var maxEu = Math.max(10, Math.max.apply(null, rows.map(function (r) { return (r.payload.report || {}).peak_eu || 0; })) * 1.1);
       var html = '';
       Object.keys(tracks).forEach(function (refId) {
         var es = tracks[refId].slice().sort(function (a, b) { return ((a.payload.report || {}).peak_eu || 0) - ((b.payload.report || {}).peak_eu || 0); });
         var ref = es[0].payload.reference || {};
         html += '<h2 class="track">Track: vs <code>' + enc(ref.label || refId) + '</code></h2>' +
-          '<p class="track-meta">baseline experiment <code>' + enc(refId) + '</code> — its signed manifest defines this track\'s envelope. Scores below compare only to each other.</p>' +
-          '<table><thead><tr><th>run</th><th class="num">peak drift</th><th class="num">breadth</th><th class="num">byte-div</th><th class="num">published</th></tr></thead><tbody>' +
-          es.map(function (r) { return entryRow(r.payload, r.ok, maxEu); }).join('') + '</tbody></table>';
+          '<p class="track-meta">baseline experiment <code>' + enc(refId) + '</code> — its signed manifest defines this track\'s envelope. Each row\'s label is the DERIVED difference between the run\'s signed configuration and the baseline\'s — computed, not written.</p>' +
+          trackSvg(es, maxEu) +
+          es.map(rowLinks).join('');
       });
       board.innerHTML = html;
     });
