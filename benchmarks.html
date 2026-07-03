@@ -53,42 +53,38 @@
 
   <h1>The AuspexAI Drift Benchmark</h1>
   <p class="lead">
-    Our apparatus, measured. Each row scores one experiment's <em>behavior</em> against a
-    fixed, signed baseline — the same model-serving stack, probed repeatedly over time and
-    across configurations. Every number on this page traces to cryptographically signed,
-    publicly anchored evidence. Don't trust the chart — verify the cell.
+    How much does an AI model's behavior actually change — over time, when settings
+    change, or when the model itself is swapped? Measured on live volunteer hardware,
+    with every number independently verifiable.
   </p>
-
-  <div class="explainer">
-    <strong>How to read it.</strong> Drift is measured in <span class="eu">envelope units (EU)</span>:
-    each declared behavioral feature's shift, divided by that feature's <em>calibrated</em>
-    tolerance — the empirically measured noise floor of the same configuration on a
-    heterogeneous volunteer fleet. <strong>1.0&nbsp;EU is the boundary</strong> between noise and
-    drift; the magnitude reads as "how many times the noise floor did behavior move."
-    The headline is a pair: <strong>peak</strong> (the worst probe) and <strong>breadth</strong>
-    (the fraction of probes beyond the envelope). Byte-level divergence and within-run
-    disagreement are reported separately — never folded into the score. Scores are comparable
-    only <em>within a track</em> (one baseline = one envelope); comparing across tracks is
-    a stated non-goal.
-  </div>
 
   <div id="board"><p class="muted">Loading registry…</p></div>
 
   <div class="foot">
-    <strong>Verify any entry yourself.</strong> Each entry is an Ed25519-signed claim by the
-    publishing researcher (this page also checks the signatures in your browser). The
-    attestation links go to the public Rekor transparency log; deep verification re-derives
-    every number from the signed evidence bundles:
-    <pre>pip install auspexai-tenant
-auspexai-tenant benchmark verify-entry entry.json     # the signed claim
-auspexai-tenant bundle verify bundle.json             # the evidence itself
-auspexai-tenant benchmark drift OBS.json REF.json     # recompute the score</pre>
-    Methodology: the Drift Benchmark standard (envelope units, peak + breadth, calibrated
-    tolerances) is part of the open AuspexAI platform.
-    Registry: <a href="registry/benchmarks.json">benchmarks.json</a> (curated; entries are
-    tenant-signed and inclusion is deliberate).
+    <h3 style="color:#e6e8ee;font-size:1rem;margin-bottom:0.5rem">How to read this</h3>
+    <p style="margin-bottom:0.7rem">
+      Each bar is one experiment: the same fixed set of prompts, run many times on the
+      network, compared against a baseline run of the same prompts. The bar's length is
+      how far the responses moved from the baseline's — <strong>1 on this scale is the
+      noise floor</strong>, the amount identical setups naturally wobble, so anything
+      left of that line is "no real change" and anything past it is genuine behavioral
+      drift, measured in multiples of that natural wobble. The label on each bar says
+      what was deliberately different (derived from the experiments' signed
+      configurations — computed, not written). Dots mark individual prompt groups:
+      "peak" is the most-moved one, "breadth" is how many moved.
+    </p>
+    <h3 style="color:#e6e8ee;font-size:1rem;margin-bottom:0.5rem">Why you can trust it</h3>
+    <p style="margin-bottom:0.7rem">
+      Every number is published by the researcher who ran the experiment,
+      cryptographically signed, and anchored in a public transparency log — this page
+      re-checks each signature in your browser, and the links under every bar go to the
+      public log records. Nothing here is hand-entered or editable: results are admitted
+      to this page automatically, by verification, not by an editor. To re-derive any
+      number yourself from the underlying evidence:
+      <code>pip install auspexai-tenant</code> · <code>auspexai-tenant benchmark
+      verify-entry</code> — the raw registry is <a href="registry/benchmarks.json">here</a>.
+    </p>
   </div>
-</div>
 
 <script>
 (function () {
@@ -174,10 +170,9 @@ auspexai-tenant benchmark drift OBS.json REF.json     # recompute the score</pre
     var sig = r.ok === true ? '<span class="sig-ok">signature ✓</span>'
       : r.ok === false ? '<span class="sig-bad">signature ✗</span>'
       : '<span class="muted">verify locally (browser lacks Ed25519)</span>';
-    return '<div class="probe-line">run <code>' + enc((e.observation || {}).label || (e.observation || {}).experiment_id) + '</code> · ' +
-      (obsRekor ? '<a href="' + obsRekor + '">run attestation ↗</a> · ' : '') +
-      (refRekor ? '<a href="' + refRekor + '">baseline attestation ↗</a> · ' : '') +
-      'publisher <code>' + enc((e.publisher_pubkey_hex || '').slice(0, 12)) + '…</code> ' + sig + '</div>';
+    return '<div class="probe-line">verify: ' +
+      (obsRekor ? '<a href="' + obsRekor + '">this run ↗</a> · ' : '') +
+      (refRekor ? '<a href="' + refRekor + '">its baseline ↗</a> · ' : '') + sig + '</div>';
   }
 
   fetch('registry/benchmarks.json?v=' + Date.now()).then(function (r) { return r.json(); }).then(function (reg) {
@@ -200,8 +195,8 @@ auspexai-tenant benchmark drift OBS.json REF.json     # recompute the score</pre
       Object.keys(tracks).forEach(function (refId) {
         var es = tracks[refId].slice().sort(function (a, b) { return ((a.payload.report || {}).peak_eu || 0) - ((b.payload.report || {}).peak_eu || 0); });
         var ref = es[0].payload.reference || {};
-        html += '<h2 class="track">Track: vs <code>' + enc(ref.label || refId) + '</code></h2>' +
-          '<p class="track-meta">baseline experiment <code>' + enc(refId) + '</code> — its signed manifest defines this track\'s envelope. Each row\'s label is the DERIVED difference between the run\'s signed configuration and the baseline\'s — computed, not written.</p>' +
+        html += '<h2 class="track">Drift vs a fixed baseline</h2>' +
+          '<p class="track-meta">every bar below is measured against the same calibrated baseline run — bars compare only to each other. <span title="baseline: ' + enc(ref.label || refId) + '">ⓘ</span></p>' +
           trackSvg(es, maxEu) +
           es.map(rowLinks).join('');
       });
