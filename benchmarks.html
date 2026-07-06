@@ -37,6 +37,8 @@
     .muted { color: #8b90a0; }
     .sig-ok { color: #34d399; }
     .sig-bad { color: #f87171; }
+    .verify-details { margin: 0.4rem 0 1rem; }
+    .verify-details summary { cursor: pointer; }
     .probe-line { font-size: 0.8rem; color: #8b90a0; margin-top: 0.25rem; }
     .note { font-size: 0.88rem; color: #b9bdc9; margin-top: 0.2rem; }
     .empty { border: 1px dashed #1c2236; border-radius: 10px; padding: 2rem; text-align: center; color: #8b90a0; margin-top: 1.5rem; }
@@ -113,64 +115,98 @@
     } catch (e) { return Promise.resolve({ payload: null, ok: false }); }
   }
 
-  function deltaLabel(e) {
-    if (!e.config_delta) {
-      return { head: (e.observation || {}).label || (e.observation || {}).experiment_id, sub: null };
-    }
-    var ch = (e.config_delta || {}).changed || {};
-    // Public labels: only behavior-relevant dimensions, in plain words.
-    // Apparatus-internal changes (reducer mode, schema bookkeeping) stay in the
-    // signed registry but don't label the chart.
-    if (ch.model) {
-      return { head: 'A different model', sub: enc(ch.model.to) + ' in place of ' + enc(ch.model.from) };
-    }
-    if (ch.generation) {
-      var m = /temp=([0-9.]+)/.exec(ch.generation.to || '');
-      return { head: 'Randomness turned on', sub: 'sampled generation (temperature ' + (m ? m[1] : '>0') + ') instead of deterministic' };
-    }
-    return { head: 'Same setup, run again later', sub: 'checks for drift over time — nothing was deliberately changed' };
+  // Human model names from routing ids: "qwen2.5-0.5b-instruct-q4" → "Qwen 2.5 · 0.5B".
+  function prettyModel(id) {
+    if (!id) return 'unknown model';
+    var sm = id.match(/(\d+(?:\.\d+)?)b\b/i);
+    var size = sm && sm[1];
+    var fam = (sm ? id.slice(0, sm.index) : id).replace(/[-_]+$/, '').replace(/[-_]/g, ' ').trim();
+    fam = fam.replace(/\b\w/g, function (c) { return c.toUpperCase(); }).replace(/(\d)\./, '$1.');
+    return fam + (size ? ' · ' + size + 'B' : '');
   }
 
-  function trackSvg(rows, maxEu) {
-    var W = 860, ROWH = 86, PADL = 8, PADR = 90, PADT = 26, PADB = 30;
-    var H = PADT + rows.length * ROWH + PADB;
+  // Which model produced the run, and under what condition — derived from the
+  // entry's signed config_delta against the baseline's model.
+  function entryFacets(e, baselineModel) {
+    var ch = (e.config_delta || {}).changed || {};
+    var model = ch.model ? ch.model.to : baselineModel;
+    // Public dimensions only: model + generation. Apparatus bookkeeping
+    // (schema/reducer diffs) must not hide "re-measured later" from readers.
+    var condition;
+    if (ch.generation) {
+      var m = /temp=([0-9.]+)/.exec(ch.generation.to || '');
+      condition = 'with randomness (temp ' + (m ? m[1] : '>0') + ')';
+    } else if (ch.model) {
+      condition = 'deterministic';
+    } else {
+      condition = 'unchanged setup, re-measured later';
+    }
+    return { model: model, condition: condition };
+  }
+
+  function modelChart(rows, baselineModel, maxEu) {
+    // Group entries by producing model; baseline model first.
+    var byModel = {};
+    rows.forEach(function (r) {
+      var f = entryFacets(r.payload, baselineModel);
+      (byModel[f.model] = byModel[f.model] || []).push({ r: r, f: f });
+    });
+    var models = Object.keys(byModel).sort(function (a, b) {
+      if (a === baselineModel) return -1;
+      if (b === baselineModel) return 1;
+      return a.localeCompare(b);
+    });
+    var W = 880, PADL = 190, PADR = 40, PADT = 34, PADB = 34, LANE = 30;
+    var lanes = [];
+    models.forEach(function (m) {
+      byModel[m].sort(function (a, b) { return ((a.r.payload.report || {}).peak_eu || 0) - ((b.r.payload.report || {}).peak_eu || 0); });
+      byModel[m].forEach(function (item, i) { lanes.push({ model: i === 0 ? m : null, item: item }); });
+    });
+    var H = PADT + lanes.length * LANE + PADB;
     var plotW = W - PADL - PADR;
     var x = function (eu) { return PADL + Math.min(eu / maxEu, 1) * plotW; };
-    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto" role="img" aria-label="Drift Benchmark ladder">';
-    // threshold line at 1 EU
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto" role="img" aria-label="Model drift comparison">';
+    // Axis + noise floor.
+    s += '<line x1="' + PADL + '" y1="' + (H - PADB) + '" x2="' + (W - PADR) + '" y2="' + (H - PADB) + '" stroke="#1c2236"/>';
     var tx = x(1);
-    s += '<line x1="' + tx + '" y1="' + (PADT - 14) + '" x2="' + tx + '" y2="' + (H - PADB + 8) + '" stroke="#8b90a0" stroke-dasharray="4 3" stroke-width="1"/>';
-    s += '<text x="' + (tx + 6) + '" y="' + (PADT - 16) + '" fill="#8b90a0" font-size="11">calibrated noise floor (1 EU)</text>';
-    rows.forEach(function (r, i) {
-      var e = r.payload, rep = e.report || {};
-      var y = PADT + i * ROWH;
-      var lbl = deltaLabel(e);
+    s += '<line x1="' + tx + '" y1="' + (PADT - 16) + '" x2="' + tx + '" y2="' + (H - PADB) + '" stroke="#8b90a0" stroke-dasharray="4 3"/>';
+    s += '<text x="' + (tx + 6) + '" y="' + (PADT - 18) + '" fill="#8b90a0" font-size="11">noise floor — differences left of this line are meaningless</text>';
+    [0, 2, 4, 6, 8, 10].forEach(function (v) {
+      if (v > maxEu) return;
+      s += '<text x="' + x(v) + '" y="' + (H - PADB + 16) + '" fill="#8b90a0" font-size="10" text-anchor="middle">' + v + '</text>';
+    });
+    s += '<text x="' + (W - PADR) + '" y="' + (H - PADB + 30) + '" fill="#8b90a0" font-size="10" text-anchor="end">drift, in multiples of the noise floor →</text>';
+    var prevModel = null;
+    lanes.forEach(function (lane, i) {
+      var y = PADT + i * LANE + LANE / 2;
+      var e = lane.item.r.payload, rep = e.report || {};
       var peak = rep.peak_eu;
-      var bw = peak == null ? 0 : (x(peak) - PADL);
-      s += '<text x="' + PADL + '" y="' + (y + 12) + '" fill="#e6e8ee" font-size="13" font-weight="700">' + enc(lbl.head) + '</text>';
-      if (lbl.sub) s += '<text x="' + PADL + '" y="' + (y + 27) + '" fill="#8b90a0" font-size="11">' + enc(lbl.sub) + '</text>';
-      s += '<rect x="' + PADL + '" y="' + (y + 34) + '" width="' + plotW + '" height="10" rx="5" fill="#131829"/>';
-      s += '<rect x="' + PADL + '" y="' + (y + 34) + '" width="' + Math.max(bw, 2) + '" height="10" rx="5" fill="#86b6ef"/>';
-      (rep.probes || []).forEach(function (pr) {
-        if (pr.peak_eu == null) return;
-        s += '<circle cx="' + x(pr.peak_eu) + '" cy="' + (y + 39) + '" r="4.5" fill="#a78bfa" stroke="#070a12" stroke-width="1.5"><title>' + enc(pr.key) + ': ' + pr.peak_eu.toFixed(2) + ' EU</title></circle>';
-      });
-      s += '<text x="' + (W - PADR + 8) + '" y="' + (y + 44) + '" fill="#fff" font-size="15" font-weight="800">' + (peak == null ? 'n/a' : peak.toFixed(2)) + '<tspan fill="#8b90a0" font-size="11" font-weight="400"> EU</tspan></text>';
-      var obsR = rekor((e.observation || {}).attestation);
-      var refR = rekor((e.reference || {}).attestation);
-      var vx = W - PADR + 8;
-      var sigGlyph = r.ok === true ? '<tspan fill="#34d399">✓ verified</tspan>'
-        : r.ok === false ? '<tspan fill="#f87171">✗</tspan>' : '';
-      s += '<text x="' + vx + '" y="' + (y + 60) + '" font-size="10" fill="#8b90a0">' + sigGlyph + '</text>';
-      if (obsR) s += '<a href="' + obsR + '"><text x="' + vx + '" y="' + (y + 74) + '" font-size="10" fill="#a78bfa">public record ↗</text></a>';
-      var n = (rep.probes || []).length;
-      var moved = (rep.probes || []).filter(function (pr) { return pr.peak_eu != null && pr.peak_eu >= 1; }).length;
-      var meta = n ? ('behavior shifted in ' + moved + ' of ' + n + ' prompt sets') : '';
-      s += '<text x="' + PADL + '" y="' + (y + 60) + '" fill="#8b90a0" font-size="11">' + enc(meta) + '</text>';
-      // links + signature live in HTML below the svg per row? keep inline:
+      if (lane.model) {
+        if (prevModel !== null)
+          s += '<line x1="8" y1="' + (y - LANE / 2) + '" x2="' + (W - PADR) + '" y2="' + (y - LANE / 2) + '" stroke="#131829"/>';
+        s += '<text x="8" y="' + (y + 4) + '" fill="#fff" font-size="13" font-weight="800">' + enc(prettyModel(lane.model)) + '</text>';
+        prevModel = lane.model;
+      }
+      // Lollipop: stem from 0 → dot at peak; score + condition to the right.
+      var px = peak == null ? PADL : x(peak);
+      s += '<line x1="' + PADL + '" y1="' + y + '" x2="' + px + '" y2="' + y + '" stroke="#86b6ef" stroke-width="3" stroke-linecap="round"/>';
+      s += '<circle cx="' + px + '" cy="' + y + '" r="6" fill="#a78bfa" stroke="#070a12" stroke-width="1.5"/>';
+      s += '<text x="' + (px + 12) + '" y="' + (y - 2) + '" fill="#fff" font-size="12" font-weight="700">' + (peak == null ? 'n/a' : peak.toFixed(1)) + '<tspan fill="#8b90a0" font-weight="400" font-size="10"> × noise</tspan></text>';
+      s += '<text x="' + (px + 12) + '" y="' + (y + 11) + '" fill="#8b90a0" font-size="10">' + enc(lane.item.f.condition) + (lane.item.r.ok === true ? '  ·  ✓ verified' : '') + '</text>';
     });
     s += '</svg>';
     return s;
+  }
+
+  function entryLinks(rows, baselineModel) {
+    return rows.map(function (r) {
+      var e = r.payload;
+      var f = entryFacets(e, baselineModel);
+      var obsRekor = rekor((e.observation || {}).attestation);
+      return '<div class="probe-line">' + enc(prettyModel(f.model)) + ', ' + enc(f.condition) +
+        ' — ' + (obsRekor ? '<a href="' + obsRekor + '">public record ↗</a>' : 'record pending public log') +
+        (r.ok === true ? ' · <span class="sig-ok">signature ✓</span>' : r.ok === false ? ' · <span class="sig-bad">signature ✗</span>' : '') + '</div>';
+    }).join('');
   }
 
   fetch('registry/benchmarks.json?v=' + Date.now()).then(function (r) { return r.json(); }).then(function (reg) {
@@ -191,11 +227,21 @@
       var maxEu = Math.max(10, Math.max.apply(null, rows.map(function (r) { return (r.payload.report || {}).peak_eu || 0; })) * 1.1);
       var html = '';
       Object.keys(tracks).forEach(function (refId) {
-        var es = tracks[refId].slice().sort(function (a, b) { return ((a.payload.report || {}).peak_eu || 0) - ((b.payload.report || {}).peak_eu || 0); });
+        var es = tracks[refId].slice();
         var ref = es[0].payload.reference || {};
-        html += '<h2 class="track">Drift vs a fixed baseline</h2>' +
-          '<p class="track-meta">every bar below is measured against the same calibrated baseline run — bars compare only to each other. <span title="baseline: ' + enc(ref.label || refId) + '">ⓘ</span></p>' +
-          trackSvg(es, maxEu);
+        // The baseline's own model: entries with unchanged model report it via
+        // config_delta 'unchanged'; we read it from any model-changed entry's
+        // delta 'from', falling back to a label guess.
+        var baselineModel = null;
+        es.forEach(function (r) {
+          var ch = (r.payload.config_delta || {}).changed || {};
+          if (ch.model && ch.model.from) baselineModel = baselineModel || ch.model.from;
+        });
+        baselineModel = baselineModel || 'gemma-3-1b-it-q4';
+        html += '<h2 class="track">How much does behavior drift — and which model drifts how far?</h2>' +
+          '<p class="track-meta">every measurement compares a model\'s responses on the same fixed prompts against one calibrated baseline run (' + enc(prettyModel(baselineModel)) + ', deterministic). Longer = behavior further from the baseline. <span title="baseline: ' + enc(ref.label || refId) + '">ⓘ</span></p>' +
+          modelChart(es, baselineModel, maxEu) +
+          '<details class="verify-details"><summary class="muted small">verification links per measurement</summary>' + entryLinks(es, baselineModel) + '</details>';
       });
       board.innerHTML = html;
     });
