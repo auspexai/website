@@ -1,13 +1,21 @@
 name: benchmark-entries
-# G5 researcher-push: entries are ADMITTED BY MACHINES. PRs touching entries/
-# get the grounded validation as a required check and auto-merge on green
-# (only when nothing outside entries/ changed); pushes to main rebuild the
-# registry from the admitted set.
+# G5 researcher-push: entries are ADMITTED BY MACHINES. An entry PR (touching
+# entries/) gets the grounded validation as a required check and auto-merges on
+# green. The registry is rebuilt INLINE onto the PR branch BEFORE merge, so the
+# squash-merge lands the admitted entry AND the refreshed registry together —
+# the entry is visible immediately.
+#
+# Why inline (2026-07-09): the auto-merge uses the built-in GITHUB_TOKEN, and a
+# merge by that token fires NO push event, so the `push: entries/**` rebuild
+# below never runs for a merged entry. The only fallback was the `*/15` cron —
+# which GitHub throttles hard (observed ~90 min), so a published benchmark could
+# sit invisible for over an hour (exp-J5L9yUza). Folding the rebuild into the PR
+# removes that dependency; the cron stays only as a belt-and-suspenders backstop.
 on:
   pull_request:
     paths: ["entries/**"]
   schedule:
-    - cron: "*/15 * * * *"   # merges by the workflow token fire no push events
+    - cron: "*/15 * * * *"   # backstop only (heavily throttled); the inline rebuild is the fast path
   workflow_dispatch: {}
   push:
     branches: [main]
@@ -22,26 +30,47 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # On a PR, check out the entry BRANCH (not the detached merge ref) so we
+          # can commit the rebuilt registry onto it. Empty elsewhere → the default ref.
+          ref: ${{ github.head_ref }}
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install --quiet auspexai-tenant
       - name: Grounded admission check + registry rebuild
         run: python scripts/validate_and_build_registry.py
-      - name: Guard — PRs may ONLY touch entries/
+      - name: Guard — a researcher PR may only touch entries/
         if: github.event_name == 'pull_request'
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
+          # The researcher's PR may only add/modify files under entries/. The bot's
+          # own registry/benchmarks.json is allowed — it is regenerated
+          # deterministically from the admitted entries by the step above, so a
+          # hand-crafted registry can never survive into main.
           CHANGED=$(gh pr view "${{ github.event.pull_request.number }}" \
             --repo "${{ github.repository }}" --json files --jq '.files[].path')
           echo "$CHANGED"
-          if echo "$CHANGED" | grep -v '^entries/'; then
+          if echo "$CHANGED" | grep -vE '^entries/|^registry/benchmarks\.json$'; then
             echo "::error::entry PRs may only add/modify files under entries/"; exit 1
+          fi
+      - name: Fold the rebuilt registry INLINE onto the PR branch (fast path)
+        if: github.event_name == 'pull_request'
+        run: |
+          git config user.name "benchmark-registry-bot"
+          git config user.email "noreply@auspexai.network"
+          git add registry/benchmarks.json
+          # Commit only when this entry actually changed the registry. On the
+          # follow-up `synchronize` re-run (fired by this push) there is no diff,
+          # so nothing is pushed and the workflow converges — no loop.
+          if ! git diff --cached --quiet; then
+            git commit -m "registry: fold in admitted entry [skip ci]"
+            git push
           fi
       - name: Auto-merge admitted entry PRs
         if: github.event_name == 'pull_request'
         env: { GH_TOKEN: "${{ github.token }}" }
         run: gh pr merge "${{ github.event.pull_request.number }}" --squash --auto || true
-      - name: Commit the rebuilt registry (main)
+      - name: Commit the rebuilt registry (backstop — schedule / dispatch / push)
         if: github.event_name != 'pull_request'
         run: |
           git config user.name "benchmark-registry-bot"
