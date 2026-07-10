@@ -274,6 +274,26 @@
       '<div class="tt-row" style="margin-top:.35rem">' + sig + '</div>';
   }
 
+  // Combined tooltip for a split marker: a model whose deterministic + sampling
+  // points land on the same spot. Both regimes shown side by side (never averaged
+  // together) — coincidence IS the "aligned under both conditions" signal.
+  function pairTipHtml(det, temp) {
+    var line = function (label, p, color) {
+      return '<div class="tt-row" style="color:' + color + '">' + label + ': <b>' +
+        (p.peak == null ? '—' : p.peak.toFixed(1)) + '×</b> · <b>' + pctv(p.breadth) + '</b> breadth' +
+        (p.runs > 1 ? ' <span class="muted">(mean of ' + p.runs + ')</span>' : '') + '</div>';
+    };
+    var allOk = det.ok === true && temp.ok === true;
+    var anyBad = det.ok === false || temp.ok === false;
+    var sig = allOk ? '<span class="sig-ok">signatures ✓</span>'
+      : anyBad ? '<span class="sig-bad">signature ✗</span>' : '<span class="muted">signature pending</span>';
+    return '<div class="tt-model">' + enc(prettyModel(det.model)) + '</div>' +
+      '<div class="tt-row muted" style="margin-bottom:.1rem">fixed &amp; sampled coincide — same drift under both</div>' +
+      line('fixed settings', det, 'var(--det)') +
+      line('with sampling', temp, 'var(--temp)') +
+      '<div class="tt-row" style="margin-top:.35rem">' + sig + '</div>';
+  }
+
   // ================= CHART 1 — magnitude × breadth =========================
   function chartMagBreadth(rows, baselineModel, maxEu) {
     // Aggregate by (model, condition): every run of the same model under the same
@@ -321,17 +341,50 @@
     // axis titles
     s += '<text x="' + (PADL + plotW / 2) + '" y="' + (H - 8) + '" fill="#8b90a0" font-size="11.5" text-anchor="middle">drift magnitude — worst prompt, in multiples of the noise floor →</text>';
     s += '<text transform="translate(15,' + (PADT + plotH / 2) + ') rotate(-90)" fill="#8b90a0" font-size="11.5" text-anchor="middle">breadth — share of prompts that moved →</text>';
-    // dots (2px surface ring; bigger transparent hit target)
+    // dots (2px surface ring; bigger transparent hit target). A model's
+    // deterministic + sampling points that land on the SAME spot are drawn as one
+    // split marker (blue|orange) with a combined tooltip — both regimes stay
+    // visible + hoverable, never averaged together. A label added per marker.
     var labels = [];
-    pts.forEach(function (p) {
-      var cx = X(p.peak), cy = Y(p.breadth), col = p.isT ? '#d95926' : '#3987e5';
-      var tt = tipHtml(p.model, p.cond, p.isT, p.peak, p.breadth, p.byte, p.runs, p.ok);
-      s += '<circle cx="' + cx + '" cy="' + cy + '" r="16" fill="transparent" data-tip="' + enc(tt) + '"/>';
-      s += '<circle cx="' + cx + '" cy="' + cy + '" r="7" fill="' + col + '" stroke="#0d1120" stroke-width="2" data-tip="' + enc(tt) + '"/>';
-      // identity label, flipped left near the right edge (placement decluttered below)
+    pts.forEach(function (p) { p.cx = X(p.peak); p.cy = Y(p.breadth); });
+    var addLabel = function (model, cx, cy) {
       var right = cx < X(maxEu) - 130;
-      labels.push({ text: prettyModel(p.model), x: right ? cx + 13 : cx - 13, y: cy + 4,
+      labels.push({ text: prettyModel(model), x: right ? cx + 13 : cx - 13, y: cy + 4,
         anchor: right ? 'start' : 'end', dotx: right ? cx + 8 : cx - 8, doty: cy, weight: 600 });
+    };
+    // Split a model's points into a coincident det+sampling PAIR vs standalone.
+    var byModel = {};
+    pts.forEach(function (p) { (byModel[p.model] = byModel[p.model] || []).push(p); });
+    var COINCIDE = 8;  // px (≈ a dot radius) counts as "on the same spot"
+    var singles = [];
+    var paired = [];
+    Object.keys(byModel).forEach(function (m) {
+      var g = byModel[m];
+      if (g.length === 2 && g[0].isT !== g[1].isT &&
+          Math.hypot(g[0].cx - g[1].cx, g[0].cy - g[1].cy) <= COINCIDE) {
+        var det = g[0].isT ? g[1] : g[0], temp = g[0].isT ? g[0] : g[1];
+        paired.push({ det: det, temp: temp, cx: (det.cx + temp.cx) / 2, cy: (det.cy + temp.cy) / 2 });
+      } else {
+        g.forEach(function (p) { singles.push(p); });
+      }
+    });
+    singles.forEach(function (p) {
+      var col = p.isT ? '#d95926' : '#3987e5';
+      var tt = tipHtml(p.model, p.cond, p.isT, p.peak, p.breadth, p.byte, p.runs, p.ok);
+      s += '<circle cx="' + p.cx + '" cy="' + p.cy + '" r="16" fill="transparent" data-tip="' + enc(tt) + '"/>';
+      s += '<circle cx="' + p.cx + '" cy="' + p.cy + '" r="7" fill="' + col + '" stroke="#0d1120" stroke-width="2" data-tip="' + enc(tt) + '"/>';
+      addLabel(p.model, p.cx, p.cy);
+    });
+    paired.forEach(function (pr) {
+      var cx = pr.cx, cy = pr.cy, r = 7, tt = pairTipHtml(pr.det, pr.temp);
+      // left half = deterministic (blue, sweep 0), right half = sampling (orange, sweep 1)
+      s += '<path d="M' + cx + ',' + (cy - r) + ' A' + r + ',' + r + ' 0 0,0 ' + cx + ',' + (cy + r) + ' Z" fill="#3987e5"/>';
+      s += '<path d="M' + cx + ',' + (cy - r) + ' A' + r + ',' + r + ' 0 0,1 ' + cx + ',' + (cy + r) + ' Z" fill="#d95926"/>';
+      s += '<line x1="' + cx + '" y1="' + (cy - r) + '" x2="' + cx + '" y2="' + (cy + r) + '" stroke="#0d1120" stroke-width="1.5"/>';
+      s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="#0d1120" stroke-width="2"/>';
+      // transparent hit target on TOP — one combined tooltip over the whole marker
+      s += '<circle cx="' + cx + '" cy="' + cy + '" r="16" fill="transparent" data-tip="' + enc(tt) + '"/>';
+      addLabel(pr.det.model, cx, cy);
     });
     s += layoutLabels(labels, PADT + 10, H - PADB - 4);
     s += '</svg>';
