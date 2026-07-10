@@ -66,10 +66,22 @@ jobs:
             git commit -m "registry: fold in admitted entry [skip ci]"
             git push
           fi
-      - name: Auto-merge admitted entry PRs
+      - name: Merge admitted entry PR (wait out the post-fold mergeability recompute)
         if: github.event_name == 'pull_request'
         env: { GH_TOKEN: "${{ github.token }}" }
-        run: gh pr merge "${{ github.event.pull_request.number }}" --squash --auto || true
+        # `--auto` is meaningless here (main has no required checks) and races the
+        # mergeability recompute that the inline fold-push above triggers, so it
+        # intermittently hit "Pull Request is not mergeable" and — masked by the old
+        # `|| true` — left PRs silently open (e.g. #18/#19, 2026-07-10). A plain
+        # retry merges as soon as the recompute settles and FAILS LOUD, so a
+        # genuinely-stuck PR surfaces red instead of a false green.
+        run: |
+          for i in $(seq 1 12); do
+            gh pr merge "${{ github.event.pull_request.number }}" --squash --delete-branch=false && exit 0
+            echo "not mergeable yet (attempt $i/12) — GitHub still recomputing after the fold-push; waiting…"
+            sleep 10
+          done
+          echo "::error::entry PR still not mergeable after ~2 min — surfacing instead of leaving it silently open"; exit 1
       - name: Commit the rebuilt registry (backstop — schedule / dispatch / push)
         if: github.event_name != 'pull_request'
         run: |
