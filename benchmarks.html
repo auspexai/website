@@ -47,6 +47,8 @@
     .legend-item { display: inline-flex; align-items: center; gap: 0.45rem; }
     .swatch { width: 11px; height: 11px; border-radius: 50%; flex: none; }
     .swatch.hollow { background: transparent; border: 1.5px dashed var(--muted); }
+    .ray-key { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-weight: 700; }
+    .ray-line { width: 16px; height: 0; border-top: 1.5px dashed var(--muted); display: inline-block; }
     /* --- tooltip --- */
     #tip { position: fixed; z-index: 20; pointer-events: none; opacity: 0; transition: opacity .08s; background: #0a0e1a; border: 1px solid var(--axis); border-radius: 8px; padding: 0.55rem 0.7rem; font-size: 0.8rem; color: var(--ink); box-shadow: 0 8px 24px rgba(0,0,0,0.5); max-width: 260px; }
     #tip .tt-model { font-weight: 700; color: #fff; }
@@ -113,8 +115,10 @@
       <strong>vertical</strong> axis is how much it drifts once sampling (temperature) is
       turned on. The diagonal is "equally sensitive to both"; a model above it is moved more
       by sampling than by anything else. This view needs both a fixed-settings run and a
-      sampled run for each model, so it fills in as models are measured under both — models
-      with only one so far are shown against their known axis, awaiting the other.
+      sampled run for each model, so it fills in as models are measured under both — a model
+      measured only one way so far sits on its known axis with a hollow dot and a dashed
+      <strong>“?”</strong> ray pointing to the axis still to be measured; it settles into the
+      plane once it has been run both ways.
     </p>
     <h3>Why you can trust it</h3>
     <p>
@@ -132,7 +136,11 @@
 
 <script>
 (function () {
-  var enc = function (s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
+  // Escapes < > &, AND " (textContent→innerHTML does NOT escape quotes). The
+  // quote-escape is load-bearing: tooltip HTML is double-encoded into a
+  // data-tip="…" attribute, so an unescaped " inside it (e.g. class="tt-model")
+  // would terminate the attribute early and render an empty tooltip box.
+  var enc = function (s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML.replace(/"/g, '&quot;'); };
   var pctv = function (v) { return v == null ? '—' : Math.round(v * 100) + '%'; };
   var rekor = function (a) {
     if (!a || !a.rekor_entry_uuid || a.rekor_entry_uuid === 'lab-mode-no-rekor') return null;
@@ -186,13 +194,65 @@
   // ---- shared scale + chrome helpers -------------------------------------
   function ticksEu(maxEu) { var t = []; for (var v = 0; v <= maxEu + 0.001; v += 2) t.push(v); return t; }
 
+  // Greedy anti-overlap for point labels. Each label wants to sit at its dot;
+  // where two would collide, later ones are nudged down and a thin leader line
+  // ties them back to the dot. This DEGRADES GRACEFULLY as the plots fill in —
+  // labels stack neatly instead of overprinting into an unreadable pile.
+  // labels: [{text, x, y, anchor, dotx, doty, size?, weight?, fill?}]
+  function layoutLabels(labels, yMin, yMax) {
+    labels.forEach(function (L) {
+      L.size = L.size || 12.5;
+      L.h = L.size + 3;                                  // line box height + gap
+      L.w = L.text.length * L.size * 0.58;               // approx glyph advance
+      L.x0 = L.anchor === 'end' ? L.x - L.w : L.anchor === 'middle' ? L.x - L.w / 2 : L.x;
+      L.x1 = L.x0 + L.w;
+      L.y0 = L.y;                                         // desired (dot-aligned)
+      L.cy = L.y;                                         // working baseline
+    });
+    labels.sort(function (a, b) { return a.cy - b.cy; });
+    var placed = [];
+    labels.forEach(function (L) {
+      var collides = true, guard = 0;
+      while (collides && guard++ < 400) {
+        collides = false;
+        for (var i = 0; i < placed.length; i++) {
+          var p = placed[i];
+          if (L.x0 < p.x1 && L.x1 > p.x0 && Math.abs(L.cy - p.cy) < L.h) {
+            L.cy = p.cy + L.h; collides = true;           // drop below the one it hit
+          }
+        }
+      }
+      if (yMax != null && L.cy > yMax) L.cy = yMax;
+      if (yMin != null && L.cy < yMin) L.cy = yMin;
+      placed.push(L);
+    });
+    var out = '';
+    labels.forEach(function (L) {                         // leaders first (under text)
+      if (L.dotx != null && Math.abs(L.cy - L.y0) > 3) {
+        var tx = L.anchor === 'end' ? L.x - 2 : L.anchor === 'start' ? L.x + 2 : L.x;
+        out += '<line x1="' + L.dotx + '" y1="' + L.doty + '" x2="' + tx + '" y2="' +
+          (L.cy - L.size * 0.32) + '" stroke="#2b3350" stroke-width="1"/>';
+      }
+    });
+    labels.forEach(function (L) {
+      out += '<text x="' + L.x + '" y="' + L.cy + '" fill="' + (L.fill || '#e6e8ee') +
+        '" font-size="' + L.size + '"' + (L.weight ? ' font-weight="' + L.weight + '"' : '') +
+        ' text-anchor="' + L.anchor + '">' + enc(L.text) + '</text>';
+    });
+    return out;
+  }
+
   // ---- tooltip (delegated) ----
   var tip = document.getElementById('tip');
+  function hideTip() { tip.style.opacity = 0; tip.setAttribute('aria-hidden', 'true'); }
   function bindTips(root) {
     root.addEventListener('mousemove', function (ev) {
       var el = ev.target.closest ? ev.target.closest('[data-tip]') : null;
-      if (!el) { tip.style.opacity = 0; tip.setAttribute('aria-hidden', 'true'); return; }
-      tip.innerHTML = el.getAttribute('data-tip');
+      var html = el && el.getAttribute('data-tip');
+      // Only show for a hit-target that actually carries content — otherwise an
+      // empty/whitespace data-tip would flash a blank box over the plot.
+      if (!html || !html.trim()) { hideTip(); return; }
+      tip.innerHTML = html;
       tip.style.opacity = 1; tip.setAttribute('aria-hidden', 'false');
       var pad = 14, tw = tip.offsetWidth, th = tip.offsetHeight;
       var x = ev.clientX + pad, y = ev.clientY + pad;
@@ -200,7 +260,7 @@
       if (y + th > window.innerHeight - 8) y = ev.clientY - th - pad;
       tip.style.left = x + 'px'; tip.style.top = y + 'px';
     });
-    root.addEventListener('mouseleave', function () { tip.style.opacity = 0; tip.setAttribute('aria-hidden', 'true'); });
+    root.addEventListener('mouseleave', hideTip);
   }
 
   function tipHtml(model, cond, isT, peak, breadth, byte, runs, ok) {
@@ -253,16 +313,18 @@
     s += '<text x="' + (PADL + plotW / 2) + '" y="' + (H - 8) + '" fill="#8b90a0" font-size="11.5" text-anchor="middle">drift magnitude — worst prompt, in multiples of the noise floor →</text>';
     s += '<text transform="translate(15,' + (PADT + plotH / 2) + ') rotate(-90)" fill="#8b90a0" font-size="11.5" text-anchor="middle">breadth — share of prompts that moved →</text>';
     // dots (2px surface ring; bigger transparent hit target)
+    var labels = [];
     pts.forEach(function (p) {
       var cx = X(p.peak), cy = Y(p.breadth), col = p.isT ? '#d95926' : '#3987e5';
       var tt = tipHtml(p.model, p.cond, p.isT, p.peak, p.breadth, p.byte, p.runs, p.ok);
       s += '<circle cx="' + cx + '" cy="' + cy + '" r="16" fill="transparent" data-tip="' + enc(tt) + '"/>';
       s += '<circle cx="' + cx + '" cy="' + cy + '" r="7" fill="' + col + '" stroke="#0d1120" stroke-width="2" data-tip="' + enc(tt) + '"/>';
-      // identity label, flipped left near the right edge
+      // identity label, flipped left near the right edge (placement decluttered below)
       var right = cx < X(maxEu) - 130;
-      var lx = right ? cx + 13 : cx - 13;
-      s += '<text x="' + lx + '" y="' + (cy + 4) + '" fill="#e6e8ee" font-size="12.5" font-weight="600" text-anchor="' + (right ? 'start' : 'end') + '">' + enc(prettyModel(p.model)) + '</text>';
+      labels.push({ text: prettyModel(p.model), x: right ? cx + 13 : cx - 13, y: cy + 4,
+        anchor: right ? 'start' : 'end', dotx: right ? cx + 8 : cx - 8, doty: cy, weight: 600 });
     });
+    s += layoutLabels(labels, PADT + 10, H - PADB - 4);
     s += '</svg>';
 
     var legend = '<div class="legend">' +
@@ -303,6 +365,7 @@
     s += '<text x="' + (X(0) + plot / 2) + '" y="' + (S - 12) + '" fill="#8b90a0" font-size="11.5" text-anchor="middle">drift with fixed settings →</text>';
     s += '<text transform="translate(16,' + (Y(0) - plot / 2) + ') rotate(-90)" fill="#8b90a0" font-size="11.5" text-anchor="middle">drift once sampling is on →</text>';
 
+    var labels = [];
     models.forEach(function (p) {
       var both = p.det != null && p.temp != null;
       if (both) {
@@ -314,7 +377,8 @@
         s += '<circle cx="' + cx + '" cy="' + cy + '" r="16" fill="transparent" data-tip="' + enc(tt) + '"/>';
         s += '<circle cx="' + cx + '" cy="' + cy + '" r="7" fill="#a78bfa" stroke="#0d1120" stroke-width="2" data-tip="' + enc(tt) + '"/>';
         var rt = cx < X(maxEu) - 120;
-        s += '<text x="' + (cx + (rt ? 12 : -12)) + '" y="' + (cy + 4) + '" fill="#e6e8ee" font-size="12.5" font-weight="600" text-anchor="' + (rt ? 'start' : 'end') + '">' + enc(prettyModel(p.model)) + '</text>';
+        labels.push({ text: prettyModel(p.model), x: cx + (rt ? 12 : -12), y: cy + 4,
+          anchor: rt ? 'start' : 'end', dotx: cx + (rt ? 8 : -8), doty: cy, weight: 600 });
       } else {
         // one condition only — anchor on the known axis, dashed ray toward the pending one
         var known = p.det != null ? 'det' : 'temp', val = p.det != null ? p.det : p.temp;
@@ -323,7 +387,7 @@
         var pend = known === 'det' ? 'sampling run pending' : 'fixed-settings run pending';
         var tt = '<div class="tt-model">' + enc(prettyModel(p.model)) + '</div>' +
           '<div class="tt-row">' + (known === 'det' ? 'fixed settings' : 'with sampling') + ': <b>' + val.toFixed(1) + '×</b> noise floor</div>' +
-          '<div class="tt-row muted" style="margin-top:.3rem">' + pend + '</div>';
+          '<div class="tt-row muted" style="margin-top:.3rem">' + pend + ' — dashed “?” ray marks the axis still to be measured</div>';
         s += '<line x1="' + cx + '" y1="' + cy + '" x2="' + ex + '" y2="' + ey + '" stroke="#8b90a0" stroke-dasharray="3 3" opacity="0.7"/>';
         s += '<text x="' + ex + '" y="' + (ey - 4) + '" fill="#8b90a0" font-size="11" text-anchor="middle">?</text>';
         s += '<circle cx="' + cx + '" cy="' + cy + '" r="16" fill="transparent" data-tip="' + enc(tt) + '"/>';
@@ -333,13 +397,16 @@
         var glx, gly, ganch;
         if (known === 'det') { var grt = cx < X(maxEu) - 110; glx = cx + (grt ? 10 : -10); gly = cy - 12; ganch = grt ? 'start' : 'end'; }
         else { glx = cx + 12; gly = cy + 4; ganch = 'start'; }
-        s += '<text x="' + glx + '" y="' + gly + '" fill="#b9bdc9" font-size="12" text-anchor="' + ganch + '">' + enc(prettyModel(p.model)) + '</text>';
+        labels.push({ text: prettyModel(p.model), x: glx, y: gly, anchor: ganch,
+          dotx: cx, doty: cy, size: 12, fill: '#b9bdc9' });
       }
     });
+    s += layoutLabels(labels, PAD + 8, S - PAD - 4);
     s += '</svg>';
     var legend = '<div class="legend">' +
       '<span class="legend-item"><span class="swatch" style="background:var(--accent)"></span>measured under both conditions</span>' +
-      '<span class="legend-item"><span class="swatch hollow"></span>one condition so far — awaiting the other</span>' +
+      '<span class="legend-item"><span class="swatch hollow"></span>measured one way so far</span>' +
+      '<span class="legend-item"><span class="ray-key"><span class="ray-line"></span>?</span>dashed “?” ray points to the axis still to be measured</span>' +
       '<span class="legend-item muted">above the diagonal = sampling drives the drift</span></div>';
     return s + legend;
   }
