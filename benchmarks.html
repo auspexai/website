@@ -69,8 +69,6 @@
     #tip .tt-model { font-weight: 700; color: #fff; }
     #tip .tt-row { color: var(--ink-2); margin-top: 0.15rem; }
     #tip b { color: var(--ink); font-variant-numeric: tabular-nums; }
-    #tip .sig-ok { color: var(--ok); }
-    #tip .sig-bad { color: var(--bad); }
     /* --- table view --- */
     details.dv { margin: 0.2rem 0 0.6rem; }
     details.dv summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
@@ -285,14 +283,11 @@
   }
 
   function tipHtml(model, cond, isT, peak, breadth, byte, runs, ok) {
-    var sig = ok === true ? '<span class="sig-ok">signature ✓</span>' : ok === false ? '<span class="sig-bad">signature ✗</span>' : '<span class="muted">signature pending</span>';
     return '<div class="tt-model">' + enc(prettyModel(model)) + '</div>' +
       '<div class="tt-row" style="color:' + (isT ? 'var(--temp)' : 'var(--det)') + '">' + enc(cond) + '</div>' +
       '<div class="tt-row">biggest drift: <b>' + (peak == null ? '—' : peak.toFixed(1)) + '×</b></div>' +
       '<div class="tt-row">responses changed: <b>' + pctv(breadth) + '</b></div>' +
-      (byte == null ? '' : '<div class="tt-row">raw byte divergence: <b>' + Math.round(byte * 100) + '%</b></div>') +
-      (runs > 1 ? '<div class="tt-row muted">mean of ' + runs + ' experiments</div>' : '<div class="tt-row muted">1 experiment</div>') +
-      '<div class="tt-row" style="margin-top:.35rem">' + sig + '</div>';
+      (runs > 1 ? '<div class="tt-row muted">mean of ' + runs + ' experiments</div>' : '<div class="tt-row muted">1 experiment</div>');
   }
 
   // Combined tooltip for a split marker: a model whose deterministic + sampling
@@ -300,19 +295,14 @@
   // together) — coincidence IS the "aligned under both conditions" signal.
   function pairTipHtml(det, temp) {
     var line = function (label, p, color) {
-      return '<div class="tt-row" style="color:' + color + '">' + label + ': <b>' +
-        (p.peak == null ? '—' : p.peak.toFixed(1)) + '×</b> · <b>' + pctv(p.breadth) + '</b> breadth' +
+      return '<div class="tt-row" style="color:' + color + '">' + label + ': biggest drift <b>' +
+        (p.peak == null ? '—' : p.peak.toFixed(1)) + '×</b>, responses changed <b>' + pctv(p.breadth) + '</b>' +
         (p.runs > 1 ? ' <span class="muted">(mean of ' + p.runs + ')</span>' : '') + '</div>';
     };
-    var allOk = det.ok === true && temp.ok === true;
-    var anyBad = det.ok === false || temp.ok === false;
-    var sig = allOk ? '<span class="sig-ok">signatures ✓</span>'
-      : anyBad ? '<span class="sig-bad">signature ✗</span>' : '<span class="muted">signature pending</span>';
     return '<div class="tt-model">' + enc(prettyModel(det.model)) + '</div>' +
       '<div class="tt-row muted" style="margin-bottom:.1rem">temperature 0 &amp; above coincide — same drift either way</div>' +
       line('temperature 0', det, 'var(--det)') +
-      line('temperature &gt; 0', temp, 'var(--temp)') +
-      '<div class="tt-row" style="margin-top:.35rem">' + sig + '</div>';
+      line('temperature &gt; 0', temp, 'var(--temp)');
   }
 
   // ================= CHART 1 — magnitude × breadth =========================
