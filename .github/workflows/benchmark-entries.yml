@@ -6,17 +6,20 @@ name: benchmark-entries
 # is a DERIVED file rebuilt from entries/. Two entry PRs published close together
 # used to collide on it: each folded a registry built from a STALE main, so the
 # second PR ended up CONFLICTING and its merge step gave up, leaving the entry
-# stuck (e.g. #21, the llama det run, 2026-07-11 — #20 merged ~1 min earlier).
+# stuck (e.g. #21, the llama det run — #20 merged ~1 min earlier).
 #
-# Fix — self-healing merge: before merging, the job MERGES origin/main into the
-# entry branch and REGENERATES the registry, which (a) resolves the derived-file
-# conflict deterministically and (b) re-runs grounded admission over the merged
-# entry set. It then merges the PR. If a sibling entry lands mid-run, the merge
+# Fix — self-healing merge: FOLD ONCE (merge origin/main into the entry branch +
+# regenerate the registry, which resolves the derived-file conflict and re-runs
+# grounded admission), then merge. If a sibling entry lands mid-run the merge
 # fails and the loop RE-SYNCS with the new main and retries — optimistic
-# concurrency, so a burst of entries serializes itself cleanly instead of one
-# winning and the rest jamming. A per-PR concurrency group keeps a single PR's
-# own re-runs from racing each other; non-PR events share one group so writes to
-# main's registry serialize.
+# concurrency, so a burst of entries serializes itself cleanly.
+#
+# CRITICAL: only re-push when main ACTUALLY advanced (an `is-ancestor` check).
+# The registry gets a fresh `updated_at` on every rebuild, so re-folding every
+# loop iteration would push a new commit each time and perpetually reset GitHub's
+# mergeability recompute — the merge would never land (this stalled #22 through
+# all 8 attempts on 2026-07-11 before this guard was added). When the merge just
+# needs the recompute to settle, we WAIT without re-pushing.
 #
 # Why fold on the branch (not a rebuild-only-on-main job): a GITHUB_TOKEN merge
 # fires NO push event, so a `push: main` rebuild would never run for a bot-merged
@@ -33,9 +36,9 @@ on:
     paths: ["entries/**", "scripts/validate_and_build_registry.py"]
 
 concurrency:
-  # Per-PR groups let different entry PRs run concurrently (the loop below makes
-  # them safe), while a PR's own re-runs queue instead of racing. All non-PR
-  # events share "main-write" so registry writes to main never run concurrently.
+  # Per-PR groups let different entry PRs run concurrently (the loop makes them
+  # safe), while a PR's own re-runs queue instead of racing. All non-PR events
+  # share "main-write" so registry writes to main never run concurrently.
   group: benchmark-entries-${{ github.event.pull_request.number || 'main-write' }}
   cancel-in-progress: false
 
@@ -81,29 +84,43 @@ jobs:
           PR="${{ github.event.pull_request.number }}"
           REPO="${{ github.repository }}"
           BR="${{ github.head_ref }}"
-          for attempt in $(seq 1 8); do
-            state=$(gh pr view "$PR" --repo "$REPO" --json state --jq .state)
-            if [ "$state" = "MERGED" ]; then echo "already merged — nothing to do"; exit 0; fi
-            git fetch --quiet origin main
-            # Bring the entry branch onto CURRENT main. The only file both sides
-            # touch is the DERIVED registry/benchmarks.json; regenerating it from
-            # entries/ resolves that conflict and re-validates the merged entry set
-            # (an inadmissible entry fails the build here → the run goes red).
+
+          # Merge current main into the entry branch + regenerate the DERIVED
+          # registry (resolves the registry conflict + re-validates the merged
+          # entry set), then push. Called once up front, and again only when a
+          # sibling entry has actually advanced main.
+          sync_fold_push() {
             git merge --no-commit --no-edit origin/main || true
             python scripts/validate_and_build_registry.py
             git add -A
-            git diff --cached --quiet || git commit -m "registry: sync with main + fold admitted entry [skip ci]"
-            git push origin "HEAD:$BR"
-            # Merge now that the branch is a clean descendant of main. If a sibling
-            # entry merged under us, this fails → the loop re-syncs with the new
-            # main and retries; it also absorbs GitHub's post-push mergeability lag.
+            git diff --cached --quiet || git commit -q -m "registry: sync with main + fold admitted entry [skip ci]"
+            git push --quiet origin "HEAD:$BR"
+          }
+
+          git fetch --quiet origin main
+          sync_fold_push
+          sleep 6   # let GitHub compute mergeability after the fold-push
+
+          for attempt in $(seq 1 8); do
+            if [ "$(gh pr view "$PR" --repo "$REPO" --json state --jq .state)" = "MERGED" ]; then
+              echo "already merged"; exit 0
+            fi
             if gh pr merge "$PR" --repo "$REPO" --squash --delete-branch=false; then
               echo "merged on attempt $attempt"; exit 0
             fi
-            echo "main advanced or mergeability still recomputing (attempt $attempt/8) — re-syncing…"
+            # Merge failed. Re-sync ONLY if a sibling entry advanced main; a fresh
+            # registry timestamp on every loop would otherwise reset GitHub's
+            # mergeability recompute forever and the merge would never land.
+            git fetch --quiet origin main
+            if git merge-base --is-ancestor origin/main HEAD; then
+              echo "mergeability still recomputing (attempt $attempt/8) — waiting, not re-pushing"
+            else
+              echo "a sibling entry advanced main (attempt $attempt/8) — re-syncing"
+              sync_fold_push
+            fi
             sleep 8
           done
-          echo "::error::entry PR could not be merged after 8 sync-and-merge attempts — surfacing instead of leaving it silently open"; exit 1
+          echo "::error::entry PR could not be merged after 8 attempts — surfacing instead of leaving it silently open"; exit 1
       - name: Commit the rebuilt registry (backstop — schedule / dispatch / push)
         if: github.event_name != 'pull_request'
         run: |
