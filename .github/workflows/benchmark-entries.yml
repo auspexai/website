@@ -1,25 +1,43 @@
 name: benchmark-entries
 # G5 researcher-push: entries are ADMITTED BY MACHINES. An entry PR (touching
-# entries/) gets the grounded validation as a required check and auto-merges on
-# green. The registry is rebuilt INLINE onto the PR branch BEFORE merge, so the
-# squash-merge lands the admitted entry AND the refreshed registry together —
-# the entry is visible immediately.
+# entries/) is grounded-validated, then SYNCED WITH main and merged by the bot.
 #
-# Why inline (2026-07-09): the auto-merge uses the built-in GITHUB_TOKEN, and a
-# merge by that token fires NO push event, so the `push: entries/**` rebuild
-# below never runs for a merged entry. The only fallback was the `*/15` cron —
-# which GitHub throttles hard (observed ~90 min), so a published benchmark could
-# sit invisible for over an hour (exp-J5L9yUza). Folding the rebuild into the PR
-# removes that dependency; the cron stays only as a belt-and-suspenders backstop.
+# Concurrency & the derived registry (hardened 2026-07-11). registry/benchmarks.json
+# is a DERIVED file rebuilt from entries/. Two entry PRs published close together
+# used to collide on it: each folded a registry built from a STALE main, so the
+# second PR ended up CONFLICTING and its merge step gave up, leaving the entry
+# stuck (e.g. #21, the llama det run, 2026-07-11 — #20 merged ~1 min earlier).
+#
+# Fix — self-healing merge: before merging, the job MERGES origin/main into the
+# entry branch and REGENERATES the registry, which (a) resolves the derived-file
+# conflict deterministically and (b) re-runs grounded admission over the merged
+# entry set. It then merges the PR. If a sibling entry lands mid-run, the merge
+# fails and the loop RE-SYNCS with the new main and retries — optimistic
+# concurrency, so a burst of entries serializes itself cleanly instead of one
+# winning and the rest jamming. A per-PR concurrency group keeps a single PR's
+# own re-runs from racing each other; non-PR events share one group so writes to
+# main's registry serialize.
+#
+# Why fold on the branch (not a rebuild-only-on-main job): a GITHUB_TOKEN merge
+# fires NO push event, so a `push: main` rebuild would never run for a bot-merged
+# entry; folding the refreshed registry into the merge keeps the entry visible
+# the instant it lands.
 on:
   pull_request:
     paths: ["entries/**"]
   schedule:
-    - cron: "*/15 * * * *"   # backstop only (heavily throttled); the inline rebuild is the fast path
+    - cron: "*/15 * * * *"   # backstop only (heavily throttled); the inline path is authoritative
   workflow_dispatch: {}
   push:
     branches: [main]
     paths: ["entries/**", "scripts/validate_and_build_registry.py"]
+
+concurrency:
+  # Per-PR groups let different entry PRs run concurrently (the loop below makes
+  # them safe), while a PR's own re-runs queue instead of racing. All non-PR
+  # events share "main-write" so registry writes to main never run concurrently.
+  group: benchmark-entries-${{ github.event.pull_request.number || 'main-write' }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -31,57 +49,61 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # On a PR, check out the entry BRANCH (not the detached merge ref) so we
-          # can commit the rebuilt registry onto it. Empty elsewhere → the default ref.
+          # Full history + the entry BRANCH (not the detached merge ref): the job
+          # merges origin/main into it and commits the rebuilt registry back.
           ref: ${{ github.head_ref }}
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install --quiet auspexai-tenant
-      - name: Grounded admission check + registry rebuild
+      - name: Grounded admission check (fast fail on an inadmissible entry)
         run: python scripts/validate_and_build_registry.py
-      - name: Guard — a researcher PR may only touch entries/
+      - name: Guard — a researcher PR may only touch entries/ (+ the derived registry)
         if: github.event_name == 'pull_request'
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           # The researcher's PR may only add/modify files under entries/. The bot's
           # own registry/benchmarks.json is allowed — it is regenerated
-          # deterministically from the admitted entries by the step above, so a
-          # hand-crafted registry can never survive into main.
+          # deterministically from the admitted entries, so a hand-crafted registry
+          # can never survive into main.
           CHANGED=$(gh pr view "${{ github.event.pull_request.number }}" \
             --repo "${{ github.repository }}" --json files --jq '.files[].path')
           echo "$CHANGED"
           if echo "$CHANGED" | grep -vE '^entries/|^registry/benchmarks\.json$'; then
             echo "::error::entry PRs may only add/modify files under entries/"; exit 1
           fi
-      - name: Fold the rebuilt registry INLINE onto the PR branch (fast path)
+      - name: Sync with main, fold the registry, and merge (self-healing under concurrent entries)
         if: github.event_name == 'pull_request'
+        env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           git config user.name "benchmark-registry-bot"
           git config user.email "noreply@auspexai.network"
-          git add registry/benchmarks.json
-          # Commit only when this entry actually changed the registry. On the
-          # follow-up `synchronize` re-run (fired by this push) there is no diff,
-          # so nothing is pushed and the workflow converges — no loop.
-          if ! git diff --cached --quiet; then
-            git commit -m "registry: fold in admitted entry [skip ci]"
-            git push
-          fi
-      - name: Merge admitted entry PR (wait out the post-fold mergeability recompute)
-        if: github.event_name == 'pull_request'
-        env: { GH_TOKEN: "${{ github.token }}" }
-        # `--auto` is meaningless here (main has no required checks) and races the
-        # mergeability recompute that the inline fold-push above triggers, so it
-        # intermittently hit "Pull Request is not mergeable" and — masked by the old
-        # `|| true` — left PRs silently open (e.g. #18/#19, 2026-07-10). A plain
-        # retry merges as soon as the recompute settles and FAILS LOUD, so a
-        # genuinely-stuck PR surfaces red instead of a false green.
-        run: |
-          for i in $(seq 1 12); do
-            gh pr merge "${{ github.event.pull_request.number }}" --squash --delete-branch=false && exit 0
-            echo "not mergeable yet (attempt $i/12) — GitHub still recomputing after the fold-push; waiting…"
-            sleep 10
+          PR="${{ github.event.pull_request.number }}"
+          REPO="${{ github.repository }}"
+          BR="${{ github.head_ref }}"
+          for attempt in $(seq 1 8); do
+            state=$(gh pr view "$PR" --repo "$REPO" --json state --jq .state)
+            if [ "$state" = "MERGED" ]; then echo "already merged — nothing to do"; exit 0; fi
+            git fetch --quiet origin main
+            # Bring the entry branch onto CURRENT main. The only file both sides
+            # touch is the DERIVED registry/benchmarks.json; regenerating it from
+            # entries/ resolves that conflict and re-validates the merged entry set
+            # (an inadmissible entry fails the build here → the run goes red).
+            git merge --no-commit --no-edit origin/main || true
+            python scripts/validate_and_build_registry.py
+            git add -A
+            git diff --cached --quiet || git commit -m "registry: sync with main + fold admitted entry [skip ci]"
+            git push origin "HEAD:$BR"
+            # Merge now that the branch is a clean descendant of main. If a sibling
+            # entry merged under us, this fails → the loop re-syncs with the new
+            # main and retries; it also absorbs GitHub's post-push mergeability lag.
+            if gh pr merge "$PR" --repo "$REPO" --squash --delete-branch=false; then
+              echo "merged on attempt $attempt"; exit 0
+            fi
+            echo "main advanced or mergeability still recomputing (attempt $attempt/8) — re-syncing…"
+            sleep 8
           done
-          echo "::error::entry PR still not mergeable after ~2 min — surfacing instead of leaving it silently open"; exit 1
+          echo "::error::entry PR could not be merged after 8 sync-and-merge attempts — surfacing instead of leaving it silently open"; exit 1
       - name: Commit the rebuilt registry (backstop — schedule / dispatch / push)
         if: github.event_name != 'pull_request'
         run: |
