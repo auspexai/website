@@ -11,6 +11,12 @@
   <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">
   <link rel="icon" type="image/png" sizes="192x192" href="images/favicon-192.png">
   <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+  <!-- privacy-respecting, cookieless analytics (GoatCounter) -->
+  <script data-goatcounter="https://auspexai.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+  <script>
+  (function(){var R=[[/#start\b/,'cta-get-started'],[/#researchers\b/,'nav-researchers'],[/#volunteers\b/,'nav-volunteers'],[/#how\b/,'nav-how'],[/benchmarks\.html/,'nav-benchmarks'],[/verify\.html/,'nav-verify'],[/getworker\./,'install-worker'],[/getresearcher\./,'install-researcher'],[/github\.com/,'outbound-github']];
+  document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a[href]');if(!a)return;var h=a.getAttribute('href')||'';for(var i=0;i<R.length;i++){if(R[i][0].test(h)){if(window.goatcounter&&window.goatcounter.count)window.goatcounter.count({path:R[i][1],title:'event: '+R[i][1],event:true});break;}}},true);})();
+  </script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     /* --- chart roles (dataviz palette, dark, validated against #0d1120) --- */
@@ -143,6 +149,7 @@
       evidence — the <a href="registry/benchmarks.json">raw registry</a> and the open
       AuspexAI tooling make each figure independently reproducible.
     </p>
+    <p class="muted" style="font-size:0.8rem;margin-top:1.25rem;">Privacy-respecting, cookieless analytics — no cookies, no personal data, no resale.</p>
   </div>
 
 <div id="tip" role="tooltip" aria-hidden="true"></div>
