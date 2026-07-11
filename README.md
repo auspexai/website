@@ -24,3 +24,13 @@ signed entry to the submit Worker (`submit-worker/`); the Worker opens a PR addi
 under `entries/`; CI (`.github/workflows/benchmark-entries.yml`) verifies the entry
 (publisher signature + coordinator-signed custody of both experiments, pinned signer)
 and auto-merges on green; the registry rebuilds on a schedule. No human curator.
+
+The board renders each entry as **two x/y scatter charts** (redesigned 2026-07-07):
+**(1) magnitude × breadth** — worst-prompt drift (× noise floor) against the share of
+prompts that moved (bottom-left = stable, top-right = drifts far and broadly; colour =
+deterministic vs. sampling); and **(2) steady vs. sampled** — per model, deterministic
+drift against temperature drift (fills in as each model is measured under both
+conditions). Both are drawn client-side as inline SVG, with per-dot hover tooltips and
+a table-view twin; every value re-checks its Ed25519 signature in the browser (nothing
+is hand-entered). The chart code lives in `benchmarks.html`; the palette/marks follow
+the shared dataviz method.
