@@ -75,6 +75,12 @@
     #tip .tt-model { font-weight: 700; color: #fff; }
     #tip .tt-row { color: var(--ink-2); margin-top: 0.15rem; }
     #tip b { color: var(--ink); font-variant-numeric: tabular-nums; }
+    /* --- hover focus + hover-only labels (chart marks) --- */
+    .mk { transition: opacity .13s ease, filter .13s ease; }
+    .mk.dim { opacity: 0.16; filter: blur(1.1px); }        /* recede the non-hovered models */
+    .reveal { transition: opacity .12s ease; }             /* edges + labels: shown only on focus */
+    text.lbl { fill: var(--ink); font-size: 12.5px; font-weight: 600;
+      paint-order: stroke; stroke: var(--surface); stroke-width: 3.5px; }  /* halo for legibility */
     /* --- table view --- */
     details.dv { margin: 0.2rem 0 0.6rem; }
     details.dv summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
@@ -363,13 +369,43 @@
     // deterministic + sampling points that land on the SAME spot are drawn as one
     // split marker (blue|orange) with a combined tooltip — both regimes stay
     // visible + hoverable, never averaged together. A label added per marker.
-    var labels = [], dotObs = [], edges = '';
+    var edges = '', labelSvg = '';
     var cssKey = function (mm) { return mm.replace(/[^a-z0-9]/gi, '_'); };
     pts.forEach(function (p) { p.cx = X(p.peak); p.cy = Y(p.breadth); });
+
+    // ── de-tie overplotting ────────────────────────────────────────────────
+    // The axes are intrinsically coarse (peak takes ~5 values, breadth 4), so
+    // many DIFFERENT models land on the same (x,y) cell and stack invisibly. Fan
+    // the distinct models in a shared cell apart on a small circle, ordered by
+    // byte-divergence (a finer, real signal) so placement is deterministic +
+    // meaningful. A model's own det+sampling get the SAME offset — they stay
+    // coincident (→ the split marker); only cross-model stacks separate.
+    (function () {
+      var CELL = 6, cells = {};
+      var key = function (p) { return Math.round(p.cx / CELL) + ',' + Math.round(p.cy / CELL); };
+      pts.forEach(function (p) { (cells[key(p)] = cells[key(p)] || []).push(p); });
+      Object.keys(cells).forEach(function (ck) {
+        var group = cells[ck], byM = {}, models = [];
+        group.forEach(function (p) { if (!byM[p.model]) { byM[p.model] = []; models.push(p.model); } byM[p.model].push(p); });
+        if (models.length < 2) return;                         // no cross-model stack
+        var mb = function (m) { var s = 0, c = 0; byM[m].forEach(function (p) { if (p.byte != null) { s += p.byte; c++; } }); return c ? s / c : 0; };
+        models.sort(function (a, b) { return mb(a) - mb(b) || (a < b ? -1 : 1); });
+        var cx0 = 0, cy0 = 0; group.forEach(function (p) { cx0 += p.cx; cy0 += p.cy; }); cx0 /= group.length; cy0 /= group.length;
+        var R = Math.min(16, 5 + models.length * 2.4);
+        models.forEach(function (m, i) {
+          var a = (i / models.length) * 2 * Math.PI - Math.PI / 2 + Math.PI / 6, dx = Math.cos(a) * R, dy = Math.sin(a) * R;
+          byM[m].forEach(function (p) { p.cx = cx0 + dx; p.cy = cy0 + dy; });
+        });
+      });
+    })();
+
+    // Hover-only label: hidden until its model is focused (kills the always-on
+    // label pile that used to bury newer points). A halo keeps it legible.
     var addLabel = function (model, cx, cy) {
       var right = cx < X(maxEu) - 130;
-      labels.push({ text: prettyModel(model), x: right ? cx + 13 : cx - 13, y: cy + 4,
-        anchor: right ? 'start' : 'end', dotx: right ? cx + 8 : cx - 8, doty: cy, weight: 600 });
+      labelSvg += '<text class="mk reveal lbl" data-model="' + cssKey(model) + '" x="' + (right ? cx + 11 : cx - 11) +
+        '" y="' + (cy + 4) + '" text-anchor="' + (right ? 'start' : 'end') + '" opacity="0" pointer-events="none">' +
+        enc(prettyModel(model)) + '</text>';
     };
     // Split a model's points into a coincident det+sampling PAIR vs standalone.
     var byModel = {};
@@ -385,7 +421,7 @@
         paired.push({ det: det, temp: temp, cx: (det.cx + temp.cx) / 2, cy: (det.cy + temp.cy) / 2 });
       } else {
         if (g.length === 2 && g[0].isT !== g[1].isT) {   // two temperatures, not coincident -> hover-reveal connector
-          edges += '<line class="edge edge-' + cssKey(m) + '" x1="' + g[0].cx + '" y1="' + g[0].cy + '" x2="' + g[1].cx + '" y2="' + g[1].cy + '" stroke="#a78bfa" stroke-width="2" stroke-dasharray="5 4" opacity="0" pointer-events="none" style="transition:opacity .12s"/>';
+          edges += '<line class="mk reveal edge-' + cssKey(m) + '" data-model="' + cssKey(m) + '" x1="' + g[0].cx + '" y1="' + g[0].cy + '" x2="' + g[1].cx + '" y2="' + g[1].cy + '" stroke="#a78bfa" stroke-width="2.5" stroke-dasharray="5 4" opacity="0" pointer-events="none"/>';
         }
         g.forEach(function (p) { singles.push(p); });
       }
@@ -394,24 +430,23 @@
     singles.forEach(function (p) {
       var col = p.isT ? '#d95926' : '#3987e5';
       var tt = tipHtml(p.model, p.cond, p.isT, p.peak, p.breadth, p.byte, p.runs, p.ok);
-      s += '<circle cx="' + p.cx + '" cy="' + p.cy + '" r="16" fill="transparent" data-model="' + cssKey(p.model) + '" data-tip="' + enc(tt) + '"/>';
-      s += '<circle cx="' + p.cx + '" cy="' + p.cy + '" r="7" fill="' + col + '" stroke="#0d1120" stroke-width="2" data-model="' + cssKey(p.model) + '" data-tip="' + enc(tt) + '"/>';
-      dotObs.push({ x: p.cx, y: p.cy });
+      s += '<circle class="mk" cx="' + p.cx + '" cy="' + p.cy + '" r="16" fill="transparent" data-model="' + cssKey(p.model) + '" data-tip="' + enc(tt) + '"/>';
+      s += '<circle class="mk" cx="' + p.cx + '" cy="' + p.cy + '" r="7" fill="' + col + '" stroke="#0d1120" stroke-width="2" data-model="' + cssKey(p.model) + '" data-tip="' + enc(tt) + '"/>';
       addLabel(p.model, p.cx, p.cy);
     });
     paired.forEach(function (pr) {
       var cx = pr.cx, cy = pr.cy, r = 7, tt = pairTipHtml(pr.det, pr.temp);
       // left half = deterministic (blue, sweep 0), right half = sampling (orange, sweep 1)
-      s += '<path d="M' + cx + ',' + (cy - r) + ' A' + r + ',' + r + ' 0 0,0 ' + cx + ',' + (cy + r) + ' Z" fill="#3987e5"/>';
-      s += '<path d="M' + cx + ',' + (cy - r) + ' A' + r + ',' + r + ' 0 0,1 ' + cx + ',' + (cy + r) + ' Z" fill="#d95926"/>';
-      s += '<line x1="' + cx + '" y1="' + (cy - r) + '" x2="' + cx + '" y2="' + (cy + r) + '" stroke="#0d1120" stroke-width="1.5"/>';
-      s += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="#0d1120" stroke-width="2"/>';
+      var dm = ' data-model="' + cssKey(pr.det.model) + '"';
+      s += '<path class="mk"' + dm + ' d="M' + cx + ',' + (cy - r) + ' A' + r + ',' + r + ' 0 0,0 ' + cx + ',' + (cy + r) + ' Z" fill="#3987e5"/>';
+      s += '<path class="mk"' + dm + ' d="M' + cx + ',' + (cy - r) + ' A' + r + ',' + r + ' 0 0,1 ' + cx + ',' + (cy + r) + ' Z" fill="#d95926"/>';
+      s += '<line class="mk"' + dm + ' x1="' + cx + '" y1="' + (cy - r) + '" x2="' + cx + '" y2="' + (cy + r) + '" stroke="#0d1120" stroke-width="1.5"/>';
+      s += '<circle class="mk"' + dm + ' cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="#0d1120" stroke-width="2"/>';
       // transparent hit target on TOP — one combined tooltip over the whole marker
-      s += '<circle cx="' + cx + '" cy="' + cy + '" r="16" fill="transparent" data-model="' + cssKey(pr.det.model) + '" data-tip="' + enc(tt) + '"/>';
-      dotObs.push({ x: cx, y: cy });
+      s += '<circle class="mk"' + dm + ' cx="' + cx + '" cy="' + cy + '" r="16" fill="transparent" data-tip="' + enc(tt) + '"/>';
       addLabel(pr.det.model, cx, cy);
     });
-    s += layoutLabels(labels, PADT + 10, H - PADB - 4, dotObs);
+    s += labelSvg;
     s += '</svg>';
 
     var legend = '<div class="legend">' +
@@ -467,10 +502,25 @@
         '</div>' +
         tableView(rows, baselineModel);
       bindTips(board);
-      // hover-reveal a model's temperature-0 <-> temperature>0 connector
-      var edgeFor = function (t) { var m = t && t.getAttribute && t.getAttribute('data-model'); return m ? board.querySelector('.edge-' + m) : null; };
-      board.addEventListener('mouseover', function (ev) { var e = edgeFor(ev.target); if (e) { e.style.opacity = '1'; e.setAttribute('stroke-width', '2.5'); } });
-      board.addEventListener('mouseout', function (ev) { var e = edgeFor(ev.target); if (e) { e.style.opacity = '0'; e.setAttribute('stroke-width', '2'); } });
+      // Hover focus: bring the hovered model's plot–edge–plot to the foreground —
+      // its dots + temperature connector + label go full; every other model dims
+      // and blurs back. The connector + label are hidden until their model is
+      // focused (so nothing is buried and an edge can never read as cross-model).
+      var curFocus = null;
+      var setFocus = function (key) {
+        if (key === curFocus) return;
+        curFocus = key;
+        board.querySelectorAll('.mk').forEach(function (el) {
+          var on = key && el.getAttribute('data-model') === key;
+          if (el.classList.contains('reveal')) el.style.opacity = on ? '1' : '0';   // edges + labels
+          else el.classList.toggle('dim', !!key && !on);                             // dots + split halves
+        });
+      };
+      board.addEventListener('mousemove', function (ev) {
+        var t = ev.target.closest ? ev.target.closest('.mk[data-model]') : null;
+        setFocus(t ? t.getAttribute('data-model') : null);
+      });
+      board.addEventListener('mouseleave', function () { setFocus(null); });
     });
   }).catch(function () {
     document.getElementById('board').innerHTML = '<div class="empty">Could not load the registry.</div>';
