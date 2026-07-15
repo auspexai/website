@@ -483,8 +483,19 @@
       return;
     }
     Promise.all(entries.map(openEntry)).then(function (opened) {
-      var rows = opened.filter(function (o) { return o.payload; });
-      if (!rows.length) { board.innerHTML = '<div class="empty">Registry entries present but none could be opened.</div>'; return; }
+      var valid = opened.filter(function (o) { return o.payload; });
+      // Defensive skip (self_baseline_drift_design.md §3.4): self-baseline entries
+      // are a single-anchor kind this Gemma-anchored board does not render yet
+      // (they carry no cross-experiment config_delta). Verify them, but leave them
+      // off this view until the board is re-pointed to self-drift.
+      var selfCount = valid.filter(function (o) { return (o.payload.entry_kind === 'self_baseline'); }).length;
+      var rows = valid.filter(function (o) { return o.payload.entry_kind !== 'self_baseline'; });
+      if (!rows.length) {
+        board.innerHTML = '<div class="empty">' + (selfCount
+          ? selfCount + ' self-baseline entr' + (selfCount === 1 ? 'y' : 'ies') + ' published — this board still shows the Gemma-anchored view; the self-drift board is being finalized.'
+          : 'Registry entries present but none could be opened.') + '</div>';
+        return;
+      }
       // baseline model = the 'from' of any model-swap delta (fallback to gemma-1b).
       var baselineModel = null;
       rows.forEach(function (r) {

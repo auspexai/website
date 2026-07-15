@@ -32,11 +32,20 @@ for f in sorted((ROOT / "entries").glob("*.json")):
             f"{f.name}: INADMISSIBLE — signature or coordinator custody grounding failed"
         )
         continue
-    print(
-        f"OK {f.name}: peak {payload['report'].get('peak_eu')} EU "
-        f"vs {payload['reference'].get('experiment_id')} "
-        f"(publisher {payload['publisher_pubkey_hex'][:12]}…)"
-    )
+    peak = (payload.get("report") or {}).get("peak_eu")
+    pub = payload["publisher_pubkey_hex"][:12]
+    if payload.get("entry_kind") == "self_baseline":
+        # A single-anchor self entry has no reference experiment (§3.4).
+        sb = payload.get("self_baseline") or {}
+        print(
+            f"OK {f.name}: self-baseline peak {peak} EU "
+            f"(model {sb.get('model')}, K={sb.get('baseline_rounds')}) (publisher {pub}…)"
+        )
+    else:
+        print(
+            f"OK {f.name}: peak {peak} EU "
+            f"vs {(payload.get('reference') or {}).get('experiment_id')} (publisher {pub}…)"
+        )
     valid.append(entry)
 
 if failures:
@@ -47,7 +56,8 @@ registry = {
     "schema": "auspexai-benchmark-registry/v0",
     "updated_at": datetime.now(UTC).isoformat(),
     "note": "Machine-admitted registry: every entry passed the grounded admission rule "
-    "(publisher signature + coordinator-signed custody of both experiments). "
+    "(publisher signature + coordinator-signed custody of the experiment(s) it anchors — "
+    "both for a cross-reference entry, the one run for a self-baseline entry). "
     "Re-check any entry: auspexai-tenant benchmark verify-entry <file>.",
     "entries": valid,
 }
