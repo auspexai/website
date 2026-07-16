@@ -118,12 +118,14 @@
   </header>
 
   <div class="explainer">
-    “Drift” is how much a model's answers change, measured against
+    This board asks one question of each model: <strong>does it reproduce its own answers?</strong>
+    A run replays the same fixed prompts over and over and scores how far the answers drift
+    from the model's <em>own</em> first rounds — measured against
     <span class="eu">how much it naturally varies run to run</span>. <strong>1× is that
     normal variation:</strong> anything below it is no real change; a value of 4 means the
-    answers moved four times further than two identical runs ever do on their own. Every
-    measurement compares a model's answers on the same fixed prompts against one calibrated
-    baseline run.
+    answers moved four times further than two identical runs ever do on their own. At the
+    origin, a model reproduced itself exactly — the serving stack is faithful. No fixed
+    reference model, no cross-model scoring: every model is judged against its own baseline.
   </div>
 
   <div id="board"><p class="muted">Loading registry…</p></div>
@@ -134,8 +136,10 @@
       Each plot is one model at one temperature — blue at temperature 0, orange above it.
       <strong>Rightward</strong> = the single biggest change in any one answer is larger;
       <strong>upward</strong> = more of the answers changed at all. The shaded strip on the
-      left is no real change. So the bottom-left is steady, and the top-right drifts far
-      <em>and</em> across the board. Hover a model to connect its two temperatures:
+      left is no real change. <strong>The bottom-left corner is the ideal — the model
+      reproduced itself exactly;</strong> the further a plot sits from it, the more the
+      serving stack drifted from the model's own normal. Hover a model to connect its two
+      temperatures:
     </p>
     <ul>
       <li><strong>Two plots on the same spot:</strong> the model drifts just as hard at
@@ -200,25 +204,34 @@
     return fam + (size ? ' · ' + size + 'B' : '');
   }
 
-  function isTemp(e) { return !!(((e.config_delta || {}).changed || {}).generation); }
+  // Self-baseline entries (§3.4) carry the run's own model + generation in a
+  // `self_baseline` block; the retired cross-reference kind used `config_delta`.
+  function isSelf(e) { return e.entry_kind === 'self_baseline'; }
+  function selfGen(e) { return (e.self_baseline || {}).generation || 'greedy'; }
+  function isTemp(e) {
+    if (isSelf(e)) return selfGen(e) !== 'greedy';
+    return !!(((e.config_delta || {}).changed || {}).generation);
+  }
   function tempLabel(e) {
-    var g = ((e.config_delta || {}).changed || {}).generation;
-    var m = g && /temp=([0-9.]+)/.exec(g.to || '');
+    var g;
+    if (isSelf(e)) g = selfGen(e);                                   // "sampling(temp=0.8,…,seeded)"
+    else { var gg = ((e.config_delta || {}).changed || {}).generation; g = gg && gg.to; }
+    var m = g && /temp=([0-9.]+)/.exec(g || '');
     return m ? 'temperature ' + m[1] : 'temperature > 0';
   }
-  // Model that produced the run (baseline unless the delta swapped it).
+  // Model that produced the run.
   function entryModel(e, baselineModel) {
+    if (isSelf(e)) return (e.self_baseline || {}).model || 'unknown model';
     var ch = (e.config_delta || {}).changed || {};
     return ch.model ? ch.model.to : baselineModel;
   }
   function condLabel(e) {
     if (isTemp(e)) return tempLabel(e);
-    var ch = (e.config_delta || {}).changed || {};
-    return ch.model ? 'temperature 0' : 'temperature 0 (re-measured)';
+    return 'temperature 0';
   }
 
   // ---- shared scale + chrome helpers -------------------------------------
-  function ticksEu(maxEu) { var t = []; for (var v = 0; v <= maxEu + 0.001; v += 2) t.push(v); return t; }
+  function ticksEu(maxEu) { var step = maxEu <= 5 ? 1 : 2; var t = []; for (var v = 0; v <= maxEu + 0.001; v += step) t.push(v); return t; }
 
   // Greedy anti-overlap for point labels. Each label wants to sit at its dot;
   // where two would collide, later ones are nudged down and a thin leader line
@@ -484,34 +497,29 @@
     }
     Promise.all(entries.map(openEntry)).then(function (opened) {
       var valid = opened.filter(function (o) { return o.payload; });
-      // Defensive skip (self_baseline_drift_design.md §3.4): self-baseline entries
-      // are a single-anchor kind this Gemma-anchored board does not render yet
-      // (they carry no cross-experiment config_delta). Verify them, but leave them
-      // off this view until the board is re-pointed to self-drift.
-      var selfCount = valid.filter(function (o) { return (o.payload.entry_kind === 'self_baseline'); }).length;
-      var rows = valid.filter(function (o) { return o.payload.entry_kind !== 'self_baseline'; });
+      // The self-drift board: plot ONLY self-baseline entries — each run scored
+      // against its OWN first rounds (drift from the model's own normal = whether
+      // the serving stack reproduces it). The retired Gemma-anchor cross-reference
+      // entries stay in the raw registry for provenance, but they measured a
+      // different question and are no longer the science shown here.
+      var rows = valid.filter(function (o) { return o.payload.entry_kind === 'self_baseline'; });
       if (!rows.length) {
-        board.innerHTML = '<div class="empty">' + (selfCount
-          ? selfCount + ' self-baseline entr' + (selfCount === 1 ? 'y' : 'ies') + ' published — this board still shows the Gemma-anchored view; the self-drift board is being finalized.'
-          : 'Registry entries present but none could be opened.') + '</div>';
+        board.innerHTML = '<div class="empty">No self-drift benchmarks published yet. A completed run scored against its own baseline — at temperature 0 or under seeded sampling — appears here once its researcher publishes the signed score (<code>auspexai-tenant benchmark publish</code>).</div>';
         return;
       }
-      // baseline model = the 'from' of any model-swap delta (fallback to gemma-1b).
-      var baselineModel = null;
-      rows.forEach(function (r) {
-        var ch = (r.payload.config_delta || {}).changed || {};
-        if (ch.model && ch.model.from) baselineModel = baselineModel || ch.model.from;
-      });
-      baselineModel = baselineModel || 'gemma-3-1b-it-q4';
-      var maxEu = Math.max(10, Math.max.apply(null, rows.map(function (r) { return (r.payload.report || {}).peak_eu || 0; })) * 1.08);
+      // Self-drift lands near the noise floor for a reproducible model, so scale the
+      // x-axis to the data (never the fixed 0–10 of the anchor board) — but always
+      // show the 1× "no real change" band so "at the origin = reproduced itself" reads.
+      var peakMax = Math.max.apply(null, rows.map(function (r) { return (r.payload.report || {}).peak_eu || 0; }));
+      var maxEu = Math.max(2, peakMax * 1.3);
 
       board.innerHTML =
         '<div class="chart-card">' +
-          '<div class="chart-title">How far, and how widely, does each model drift?</div>' +
-          '<div class="chart-sub">Each plot is one model at one temperature, on the same fixed prompts vs. the calibrated baseline (' + enc(prettyModel(baselineModel)) + '). Hover a model to connect its two temperatures.</div>' +
-          chartMagBreadth(rows, baselineModel, maxEu) +
+          '<div class="chart-title">Does each model reproduce its own answers?</div>' +
+          '<div class="chart-sub">Each plot is one model at one temperature, scored against its OWN first rounds on the same fixed prompts. Bottom-left corner = it reproduced itself exactly; further out = the serving stack drifted from the model\'s own normal. Hover a model to connect its two temperatures.</div>' +
+          chartMagBreadth(rows, null, maxEu) +
         '</div>' +
-        tableView(rows, baselineModel);
+        tableView(rows, null);
       bindTips(board);
       // Hover focus: bring the hovered model's plot–edge–plot to the foreground —
       // its dots + temperature connector + label go full; every other model dims
