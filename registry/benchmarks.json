@@ -1,6 +1,6 @@
 {
   "schema": "auspexai-benchmark-registry/v0",
-  "updated_at": "2026-07-16T10:57:24.022699+00:00",
+  "updated_at": "2026-07-16T12:08:32.245164+00:00",
   "note": "Machine-admitted registry: every entry passed the grounded admission rule (publisher signature + coordinator-signed custody of the experiment(s) it anchors \u2014 both for a cross-reference entry, the one run for a self-baseline entry). Re-check any entry: auspexai-tenant benchmark verify-entry <file>.",
   "entries": [
     {
