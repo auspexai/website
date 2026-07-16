@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Drift Benchmark — auspex[ai]</title>
-  <meta name="description" content="The AuspexAI Drift Benchmark: model-behavior drift plotted on two axes — magnitude × breadth, and stability under fixed settings vs sampling — every number traceable to signed, publicly-anchored evidence.">
+  <meta name="description" content="The AuspexAI Drift Benchmark: does each model reproduce its own answers? Self-baseline drift — how far a model's outputs move from its own baseline, at temperature 0 and under sampling — every number signed by the researcher who ran it and independently verifiable.">
   <meta name="robots" content="noindex">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
@@ -151,10 +151,10 @@
     </ul>
     <h3>Why you can trust it</h3>
     <p>
-      Every number is published by the researcher who ran the experiment, cryptographically
-      signed, and anchored in a public transparency log — this page re-checks each signature
-      in your browser, and the links in the table go to the public log records. Nothing here
-      is hand-entered or editable: results are admitted automatically, by verification, not
+      Every number is published by the researcher who ran the experiment and cryptographically
+      signed — this page re-checks each signature in your browser. Where a run's evidence is
+      anchored in a public transparency log, the table links straight to that record. Nothing
+      here is hand-entered or editable: results are admitted automatically, by verification, not
       by an editor. Technical readers can re-derive every number from the underlying signed
       evidence — the <a href="registry/benchmarks.json">raw registry</a> and the open
       AuspexAI tooling make each figure independently reproducible.
