@@ -149,6 +149,18 @@
         bottom-left, and only temperature above 0 pushes it out — the drift is a knob you
         control.</li>
     </ul>
+    <p>
+      <strong>The dashed ring around a plot is a stricter, exact-wording check.</strong> The
+      position measures <em>behavioural</em> drift — whether the answers changed in their measured
+      features. The ring measures something narrower: how often the <em>raw text</em> came back
+      byte-for-byte different at all. At temperature 0 a faithful stack reproduces the exact
+      wording, so there is no ring. Under sampling the exact words legitimately vary from one worker
+      to the next even when the behaviour is identical — a wide ring over a bottom-left plot is
+      exactly that: the wording shuffles across the fleet while the behaviour holds. It is fleet
+      reproduction of the literal text, never folded into the drift score. The <strong>Spread</strong>
+      column in the table view grades it further — the average distance between a model's own
+      responses, in the same units as the drift score.
+    </p>
     <h3>Why you can trust it</h3>
     <p>
       Every number is published by the researcher who ran the experiment and cryptographically
@@ -313,6 +325,7 @@
       '<div class="tt-row" style="color:' + (isT ? 'var(--temp)' : 'var(--det)') + '">' + enc(cond) + '</div>' +
       '<div class="tt-row">biggest drift: <b>' + (peak == null ? '—' : peak.toFixed(1)) + '×</b></div>' +
       '<div class="tt-row">responses changed: <b>' + pctv(breadth) + '</b></div>' +
+      (byte == null ? '' : '<div class="tt-row" style="margin-top:.3rem">exact wording varied: <b>' + pctv(byte) + '</b></div>') +
       (runs > 1 ? '<div class="tt-row muted">mean of ' + runs + ' experiments</div>' : '<div class="tt-row muted">1 experiment</div>');
   }
 
@@ -323,6 +336,7 @@
     var line = function (label, p, color) {
       return '<div class="tt-row" style="color:' + color + '">' + label + ': biggest drift <b>' +
         (p.peak == null ? '—' : p.peak.toFixed(1)) + '×</b>, responses changed <b>' + pctv(p.breadth) + '</b>' +
+        (p.byte == null ? '' : ', wording varied <b>' + pctv(p.byte) + '</b>') +
         (p.runs > 1 ? ' <span class="muted">(mean of ' + p.runs + ')</span>' : '') + '</div>';
     };
     return '<div class="tt-model">' + enc(prettyModel(det.model)) + '</div>' +
@@ -439,6 +453,25 @@
         g.forEach(function (p) { singles.push(p); });
       }
     });
+    // ── exact-wording halo ─────────────────────────────────────────────────
+    // A soft dashed ring whose radius grows with byte-divergence — how often the
+    // raw TEXT itself came back different (a stricter, exact-string reproducibility
+    // signal that rides ALONGSIDE the drift axes, never in them). Behaviour can
+    // hold while the exact wording varies: under sampling the same seed does not
+    // reproduce byte-for-byte across different workers / serving stacks (C15), so a
+    // wide ring over a bottom-left plot reads "the wording shuffles across the
+    // fleet, the behaviour holds" — fleet reproduction, NOT drift. No ring = the
+    // raw text reproduced exactly.
+    var halo = function (cx, cy, byte, model) {
+      if (byte == null || byte <= 0.02) return '';
+      var r = Math.min(30, 9 + byte * 22);
+      return '<circle class="mk" data-model="' + cssKey(model) + '" cx="' + cx + '" cy="' + cy +
+        '" r="' + r.toFixed(1) + '" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="2 3" opacity="0.6" pointer-events="none"/>';
+    };
+    var halos = '';
+    singles.forEach(function (p) { halos += halo(p.cx, p.cy, p.byte, p.model); });
+    paired.forEach(function (pr) { halos += halo(pr.cx, pr.cy, Math.max(pr.det.byte || 0, pr.temp.byte || 0), pr.det.model); });
+    s += halos;
     s += edges;
     singles.forEach(function (p) {
       var col = p.isT ? '#d95926' : '#3987e5';
@@ -464,7 +497,8 @@
 
     var legend = '<div class="legend">' +
       '<span class="legend-item"><span class="swatch" style="background:var(--det)"></span>temperature 0</span>' +
-      '<span class="legend-item"><span class="swatch" style="background:var(--temp)"></span>temperature &gt; 0</span></div>';
+      '<span class="legend-item"><span class="swatch" style="background:var(--temp)"></span>temperature &gt; 0</span>' +
+      '<span class="legend-item"><span class="swatch hollow"></span>ring = exact wording varied (bigger = more)</span></div>';
     return s + legend;
   }
 
@@ -480,11 +514,12 @@
         '<td class="num">' + (rep.peak_eu == null ? '—' : rep.peak_eu.toFixed(1)) + '×</td>' +
         '<td class="num">' + pctv(rep.breadth) + '</td>' +
         '<td class="num">' + (rep.byte_divergence_rate == null ? '—' : Math.round(rep.byte_divergence_rate * 100) + '%') + '</td>' +
+        '<td class="num">' + (rep.dispersion_eu == null ? '—' : rep.dispersion_eu.toFixed(1) + '×') + '</td>' +
         '<td>' + sig + (obs ? ' · <a href="' + obs + '">record ↗</a>' : ' <span class="muted">· record pending</span>') + '</td>' +
         '</tr>';
     }).join('');
     return '<details class="dv"><summary>table view — every measurement, with verification</summary>' +
-      '<table class="dv-table"><thead><tr><th>Model</th><th>Condition</th><th>Magnitude</th><th>Breadth</th><th>Byte div.</th><th>Signature / record</th></tr></thead>' +
+      '<table class="dv-table"><thead><tr><th>Model</th><th>Condition</th><th>Magnitude</th><th>Breadth</th><th>Wording varied</th><th>Spread</th><th>Signature / record</th></tr></thead>' +
       '<tbody>' + body + '</tbody></table></details>';
   }
 
