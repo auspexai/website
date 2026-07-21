@@ -540,14 +540,19 @@
       // ONE chart: DRIFT (position = does it reproduce its own answers) + DIVERSITY
       // (dot size = how wide its output cloud is). Two orthogonal facts on one mark —
       // a diverse-but-stable model is a big dot near the origin; a drifting-but-narrow
-      // one a small dot far right. EXCLUDE an UNCALIBRATED per-round run (dispersion set
+      // one a small dot far right. EXCLUDE an UNCALIBRATED per-round run (real spread
       // but calibrate_envelope off): its raw peak is fake drift (the varied baseline
-      // reads as motion), so it would misplace on the drift axis.
+      // reads as motion), so it would misplace on the drift axis. Gate on dispersion_eu
+      // > 0 (REAL spread), NOT merely non-null: a greedy (temp 0) run now honestly
+      // reports dispersion_eu = 0.0 (SDK >= 0.6.63 — byte-perfect, zero spread), and a
+      // `!= null` gate wrongly swept those byte-perfect drift anchors off the board.
+      // Only a varied baseline (dispersion > 0) that wasn't calibrated is the fake-drift
+      // case; a calibrated per-round run (calibrate_envelope on) is always kept.
       var rows = valid.filter(function (o) {
         var p = o.payload;
         if (p.entry_kind !== 'self_baseline') return false;
         var rep = p.report || {}, sb = p.self_baseline || {};
-        return !(rep.dispersion_eu != null && !sb.calibrate_envelope);
+        return !(rep.dispersion_eu > 0 && !sb.calibrate_envelope);
       });
       if (!rows.length) {
         board.innerHTML = '<div class="empty">No self-drift benchmarks published yet. A completed run scored against its own baseline — at temperature 0 or under seeded sampling — appears here once its researcher publishes the signed score (<code>auspexai-tenant benchmark publish</code>).</div>';
