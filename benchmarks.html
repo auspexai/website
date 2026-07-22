@@ -162,13 +162,15 @@
       (how often the raw text came back byte-for-byte different) for every run.
     </p>
     <p>
-      <strong>One caveat on the&nbsp;×.</strong> The drift number is always in multiples of
-      <em>that run's own</em> reference spread — a temperature-0 (blue) run is measured against a
-      fixed noise floor, a temperature-above-0 (orange) run against its own baseline variety. So a
-      blue&nbsp;4× and an orange&nbsp;1× are not the same ruler: compare magnitudes <em>within</em> a
-      colour, and use <strong>responses&nbsp;changed</strong> and <strong>wording&nbsp;varied</strong>
-      (the same measure for every run) to compare across them. Each dot's tooltip names the floor its
-      × is measured against.
+      <strong>One caveat on the&nbsp;×.</strong> Every run here is scored against <em>its own</em>
+      first rounds — the self-baseline is the same for all of them. What differs is the tolerance
+      band the drift is divided by: each run's own baseline noise. A temperature-0 (blue) run's
+      baseline barely moves, so its band is the tiny reproducibility floor; a temperature-above-0
+      (orange) run's baseline is spread out by the sampler, so its band is that wider scatter. A
+      blue&nbsp;4× (four times a tiny floor) is therefore a <em>smaller</em> absolute move than an
+      orange&nbsp;1× (once a wide scatter): compare magnitudes <em>within</em> a colour, and use
+      <strong>responses&nbsp;changed</strong> and <strong>wording&nbsp;varied</strong> (the same
+      measure for every run) to compare across them. Each dot's tooltip names its band.
     </p>
     <h3>Why you can trust it</h3>
     <p>
@@ -255,14 +257,16 @@
   // Absent on legacy entries → "fixed" (they were all drift runs).
   function selfSeedPolicy(e) { return (e.self_baseline || {}).seed_policy || 'fixed'; }
   function isDiversity(e) { return isSelf(e) && selfSeedPolicy(e) === 'per_round'; }
-  // Which reference floor a run's peak-EU (drift ×) is measured against. A calibrated
-  // per-round run is scored against its OWN baseline spread; a greedy/fixed-seed run
-  // against the fixed C7 noise floor. Same "×" therefore means DIFFERENT floors — named
-  // in each tooltip so a blue (fixed-floor) point isn't read on the same ruler as an
-  // orange (self-calibrated) one. This is inherent (a greedy run has no baseline spread
-  // to calibrate against), so it's disclosed, not unified.
+  // EVERY run is self-baselined (drift from its OWN first-K rounds) — that reference is
+  // uniform across greedy and sampling. What differs is the tolerance BAND the drift is
+  // divided by: each run's own baseline noise, floored at the C7 reproducibility floor.
+  // A greedy run's baseline is byte-stable, so its band = the floor; a per-round run's
+  // baseline is spread by the sampler, so its band = that (wider) scatter. So a blue 4×
+  // (× a tiny floor) is a SMALLER absolute move than an orange 1× (× a wide scatter) —
+  // the tooltip names each band so the two aren't read on one absolute scale. It is one
+  // rule (band = max(own baseline scatter, floor)); greedy just sits at the floor.
   function selfCalibrated(e) { return !!(e.self_baseline || {}).calibrate_envelope; }
-  function envNote(e) { return selfCalibrated(e) ? 'its own baseline spread' : 'the fixed noise floor'; }
+  function envNote(e) { return selfCalibrated(e) ? 'its own baseline scatter' : 'the reproducibility floor'; }
   function selfTempNum(e) {
     var m = /temp=([0-9.]+)/.exec(selfGen(e) || '');
     return m ? parseFloat(m[1]) : null;
