@@ -162,15 +162,11 @@
       (how often the raw text came back byte-for-byte different) for every run.
     </p>
     <p>
-      <strong>One caveat on the&nbsp;×.</strong> Every run here is scored against <em>its own</em>
-      first rounds — the self-baseline is the same for all of them. What differs is the tolerance
-      band the drift is divided by: each run's own baseline noise. A temperature-0 (blue) run's
-      baseline barely moves, so its band is the tiny reproducibility floor; a temperature-above-0
-      (orange) run's baseline is spread out by the sampler, so its band is that wider scatter. A
-      blue&nbsp;4× (four times a tiny floor) is therefore a <em>smaller</em> absolute move than an
-      orange&nbsp;1× (once a wide scatter): compare magnitudes <em>within</em> a colour, and use
-      <strong>responses&nbsp;changed</strong> and <strong>wording&nbsp;varied</strong> (the same
-      measure for every run) to compare across them. Each dot's tooltip names its band.
+      Every run is scored the same way: how far it drifts from <em>its own</em> opening rounds,
+      in multiples of that run's own natural round-to-round wobble. So <strong>1× is
+      business&#8209;as&#8209;usual</strong> — no more than the model's normal variation — and
+      further right means it drifted beyond its own normal. One ruler for every point, temperature
+      0 or above.
     </p>
     <h3>Why you can trust it</h3>
     <p>
@@ -257,16 +253,6 @@
   // Absent on legacy entries → "fixed" (they were all drift runs).
   function selfSeedPolicy(e) { return (e.self_baseline || {}).seed_policy || 'fixed'; }
   function isDiversity(e) { return isSelf(e) && selfSeedPolicy(e) === 'per_round'; }
-  // EVERY run is self-baselined (drift from its OWN first-K rounds) — that reference is
-  // uniform across greedy and sampling. What differs is the tolerance BAND the drift is
-  // divided by: each run's own baseline noise, floored at the C7 reproducibility floor.
-  // A greedy run's baseline is byte-stable, so its band = the floor; a per-round run's
-  // baseline is spread by the sampler, so its band = that (wider) scatter. So a blue 4×
-  // (× a tiny floor) is a SMALLER absolute move than an orange 1× (× a wide scatter) —
-  // the tooltip names each band so the two aren't read on one absolute scale. It is one
-  // rule (band = max(own baseline scatter, floor)); greedy just sits at the floor.
-  function selfCalibrated(e) { return !!(e.self_baseline || {}).calibrate_envelope; }
-  function envNote(e) { return selfCalibrated(e) ? 'its own baseline scatter' : 'the reproducibility floor'; }
   function selfTempNum(e) {
     var m = /temp=([0-9.]+)/.exec(selfGen(e) || '');
     return m ? parseFloat(m[1]) : null;
@@ -350,11 +336,10 @@
     root.addEventListener('mouseleave', hideTip);
   }
 
-  function tipHtml(model, cond, isT, peak, breadth, byte, disp, runs, ok, env) {
+  function tipHtml(model, cond, isT, peak, breadth, byte, disp, runs, ok) {
     return '<div class="tt-model">' + enc(prettyModel(model)) + '</div>' +
       '<div class="tt-row" style="color:' + (isT ? 'var(--temp)' : 'var(--det)') + '">' + enc(cond) + '</div>' +
-      '<div class="tt-row">biggest drift: <b>' + (peak == null ? '—' : peak.toFixed(1)) + '×</b>' +
-        (env ? ' <span class="muted">(× ' + enc(env) + ')</span>' : '') + '</div>' +
+      '<div class="tt-row">biggest drift: <b>' + (peak == null ? '—' : peak.toFixed(1)) + '×</b></div>' +
       '<div class="tt-row">responses changed: <b>' + pctv(breadth) + '</b></div>' +
       (disp == null ? '' : '<div class="tt-row" style="margin-top:.3rem">output spread: <b>' + disp.toFixed(1) + '×</b> <span class="muted">(dot size)</span></div>') +
       (byte == null ? '' : '<div class="tt-row">exact wording varied: <b>' + pctv(byte) + '</b></div>') +
@@ -367,8 +352,7 @@
   function pairTipHtml(det, temp) {
     var line = function (label, p, color) {
       return '<div class="tt-row" style="color:' + color + '">' + label + ': biggest drift <b>' +
-        (p.peak == null ? '—' : p.peak.toFixed(1)) + '×</b>' + (p.env ? ' <span class="muted">(× ' + enc(p.env) + ')</span>' : '') +
-        ', responses changed <b>' + pctv(p.breadth) + '</b>' +
+        (p.peak == null ? '—' : p.peak.toFixed(1)) + '×</b>, responses changed <b>' + pctv(p.breadth) + '</b>' +
         (p.disp == null ? '' : ', spread <b>' + p.disp.toFixed(1) + '×</b>') +
         (p.byte == null ? '' : ', wording varied <b>' + pctv(p.byte) + '</b>') +
         (p.runs > 1 ? ' <span class="muted">(mean of ' + p.runs + ')</span>' : '') + '</div>';
@@ -404,7 +388,7 @@
       return { model: entryModel(top, baselineModel), isT: isTemp(top), cond: condLabel(top),
         peak: mean(g, 'peak_eu') || 0, breadth: mean(g, 'breadth') || 0,
         byte: mean(g, 'byte_divergence_rate'), disp: mean(g, 'dispersion_eu'),
-        runs: g.length, ok: ok, env: envNote(top) };
+        runs: g.length, ok: ok };
     });
 
     var W = 900, H = 440, PADL = 60, PADR = 26, PADT = 26, PADB = 54;
@@ -498,7 +482,7 @@
     s += edges;
     singles.forEach(function (p) {
       var col = p.isT ? '#d95926' : '#3987e5', r = dotR(p.disp);
-      var tt = tipHtml(p.model, p.cond, p.isT, p.peak, p.breadth, p.byte, p.disp, p.runs, p.ok, p.env);
+      var tt = tipHtml(p.model, p.cond, p.isT, p.peak, p.breadth, p.byte, p.disp, p.runs, p.ok);
       s += '<circle class="mk" cx="' + p.cx + '" cy="' + p.cy + '" r="' + Math.max(16, r + 5).toFixed(1) + '" fill="transparent" data-model="' + cssKey(p.model) + '" data-tip="' + enc(tt) + '"/>';
       s += '<circle class="mk" cx="' + p.cx + '" cy="' + p.cy + '" r="' + r.toFixed(1) + '" fill="' + col + '" fill-opacity="0.82" stroke="#0d1120" stroke-width="2" data-model="' + cssKey(p.model) + '" data-tip="' + enc(tt) + '"/>';
       addLabel(p.model, p.cx, p.cy);
